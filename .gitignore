@@ -1,0 +1,4 @@
+/build
+OpenCLNeuralNetwork.exe
+*.bin
+.vscode/settings.json
