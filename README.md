@@ -47,6 +47,7 @@ Planned features include:
 - Saving/loading model weights
 - More loss functions and activation types
 - CLI/demo interfaces
+- Automated differentiation support
 
 ---
 
