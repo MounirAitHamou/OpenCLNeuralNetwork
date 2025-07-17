@@ -47,9 +47,9 @@ Planned features include:
 1. Input data preprocessing
 2. Convolutional layer support
 3. CLI/demo interfaces
-4. Automated differentiation support
-- More loss functions, optimizers, and activation functions
+- More layers, loss functions, optimizers, and activation functions
 - (Possible) Python bindings
+- (Possible) Automated differentiation support
 
 ---
 
