@@ -30,6 +30,8 @@ add_executable(OpenCLNeuralNetwork
     src/Utils/LayerConfig.cpp
     src/Utils/OptimizerConfig.cpp
     src/Utils/NetworkConfig.cpp
+    src/DataProcessor/DataProcessor.cpp
+    src/DataProcessor/CSVNumerical/CSVNumericalProcessor.cpp
 )
 
 target_include_directories(OpenCLNeuralNetwork PRIVATE

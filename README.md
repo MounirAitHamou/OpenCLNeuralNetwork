@@ -32,6 +32,11 @@ This project was created as a personal learning project to understand neural net
 - 💾 **Model saving/loading**
   - Save and load model configurations and weights in HDF5 format for easy persistence.
 
+- 📊 **Data processing**
+  - Built-in CSV data processor for loading and preprocessing datasets.
+    > Planned: Image data processor
+  - Supports splitting data into training, validation, and test sets.
+
 ---
 
 ## 📦 Project Status

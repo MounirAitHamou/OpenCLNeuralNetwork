@@ -45,4 +45,11 @@ namespace NetworkConfig {
         size_t batch_size = 1,
         LossFunctionType loss_function_type = LossFunctionType::MeanSquaredError
     );
+
+    NetworkArgs createNetworkArgs(
+        const Dimensions& initial_input_dims,
+        const OptimizerConfig::OptimizerParameters& optimizer_parameters,
+        size_t batch_size = 1,
+        LossFunctionType loss_function_type = LossFunctionType::MeanSquaredError
+    );
 }

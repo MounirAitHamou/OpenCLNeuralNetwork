@@ -1,7 +1,7 @@
 #pragma once
 
 #include "Utils/NetworkConfig.hpp"
-#include "Layer/Layer.hpp"
+#include "DataProcessor/AllDataProcessors.hpp"
 
 #include <algorithm>
 #include <iostream>
@@ -14,7 +14,9 @@ public:
     std::vector<std::unique_ptr<Layer>> layers;
 
     size_t batch_size;
+    Dimensions input_dims;
 
+    OpenCLSetup ocl_setup;
     cl::Context context;
     cl::CommandQueue queue;
     cl::Program program;
@@ -32,7 +34,10 @@ public:
 
     cl::Buffer forward(const cl::Buffer& initial_input_batch, size_t current_batch_actual_size);
     void backprop(const cl::Buffer& original_network_input_batch, const cl::Buffer& target_batch_buf);
-    void train(const std::vector<std::vector<float>>& inputs, const std::vector<std::vector<float>>& targets, int epochs);
+    void train(DataProcessor& dataProcessor, int epochs);
+
+
+    NeuralNetwork& addDense(const size_t output_dims_int, ActivationType activation_type);
 
     void printCLBuffer(const cl::Buffer& buffer, size_t size, const std::string& label = "Buffer") {
         std::vector<float> host_data(size);

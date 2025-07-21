@@ -6,7 +6,11 @@ This guide walks through how to use and customize the `OpenCLNeuralNetwork` fram
 
 ## 🏁 Running the XOR Example
 
-The `main()` function in `main.cpp` demonstrates how to train a small neural network to learn the XOR function using OpenCL-accelerated matrix operations.
+The `makeXORModel()` function in `main.cpp` demonstrates how to train a small neural network to learn the XOR function using OpenCL-accelerated matrix operations.
+
+## 🧪 Running the Regression Example
+
+The `makeRegressionModel()` function in `main.cpp` shows how to train a neural network for regression tasks, such as predicting continuous values based on input features.
 
 ### ✅ To run the demo:
 
@@ -62,20 +66,52 @@ The network architecture is defined by specifying layers using LayerArgs:
 
 Adding Hidden Layers
 ```cpp
-std::vector<std::unique_ptr<LayerConfig::LayerArgs>> hidden_layers;
-hidden_layers.push_back(LayerConfig::makeDenseLayerArgs(
-    Dimensions({4}), ActivationType::Tanh));  // Example hidden layer with 4 neurons and Tanh activation
+    std::vector<std::unique_ptr<LayerConfig::LayerArgs>> hidden_layers;
+    hidden_layers.push_back(LayerConfig::makeDenseLayerArgs(
+        Dimensions({4}), ActivationType::Tanh));  // Example hidden layer with 4 neurons and Tanh activation
  
 
-hidden_layers.push_back(LayerConfig::makeDenseLayerArgs(
-    Dimensions({6}), ActivationType::ReLU));  // Second hidden layer example
+    hidden_layers.push_back(LayerConfig::makeDenseLayerArgs(
+        Dimensions({6}), ActivationType::ReLU));  // Second hidden layer example
 ```
 
 Setting the Output Layer
 ```cpp
-std::unique_ptr<LayerConfig::LayerArgs> output_layer =
-    LayerConfig::makeDenseLayerArgs(
-        Dimensions({1}), ActivationType::Sigmoid);  // Output layer with 1 neuron and Sigmoid activation
+    std::unique_ptr<LayerConfig::LayerArgs> output_layer =
+        LayerConfig::makeDenseLayerArgs(
+            Dimensions({1}), ActivationType::Sigmoid);  // Output layer with 1 neuron and Sigmoid activation
+```
+
+Adding Layers to the Network after initialization
+```cpp
+    net.addDense(1, ActivationType::Sigmoid);  // Add output layer
+```
+
+💾 Saving and Loading a Network
+
+You can save the trained network to a file and load it later using HDF5 format:
+
+```cpp
+    net.saveNetwork("network.h5");  // Save the network
+```
+
+```cpp
+    NeuralNetwork loaded_net = NeuralNetwork::loadNetwork(ocl_setup, "network.h5");  // Load the network
+```
+
+📊 Data Processor
+
+```cpp
+    CSVNumericalProcessor csv_processor(ocl_setup, batch_size);
+    csv_processor.loadData("data/Regression/test_regression1.csv", {"feature1", "feature2", "feature3"}, {"target"});
+    unsigned int seed;
+    seed = static_cast<unsigned int>(std::chrono::system_clock::now().time_since_epoch().count());
+    csv_processor.splitData(1.0f, 0.0f, seed);
+
+    net.train(
+        csv_processor,
+        epochs
+    );
 ```
 
 Supported Activation Functions:
@@ -87,4 +123,11 @@ ActivationType::Sigmoid
 ActivationType::Tanh
 
 ActivationType::ReLU
+```
+
+Supported Loss Functions:
+```cpp
+LossFunctionType::MeanSquaredError
+
+LossFunctionType::BinaryCrossEntropy
 ```

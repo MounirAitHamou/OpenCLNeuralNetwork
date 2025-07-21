@@ -1,23 +1,48 @@
 #include "NeuralNetwork/NeuralNetwork.hpp"
 
 NeuralNetwork::NeuralNetwork(const OpenCLSetup& ocl_setup, NetworkConfig::NetworkArgs network_args)
-    : context(ocl_setup.context), queue(ocl_setup.queue), program(ocl_setup.program),
-        batch_size(network_args.batch_size), loss_function_type(network_args.loss_function_type) {
-    
-    size_t current_layer_id = 0;
-    
-    Dimensions current_input_dims = network_args.initial_input_dims;
-    for (const auto& layer_args : network_args.layer_arguments) {
-        layer_args->batch_size = batch_size;
-        layers.emplace_back(layer_args->createLayer(current_layer_id, ocl_setup, current_input_dims));
-        current_input_dims = layers.back()->output_dims;
-        current_layer_id++;
+    : context(ocl_setup.context), queue(ocl_setup.queue), program(ocl_setup.program), ocl_setup(ocl_setup), 
+    input_dims(network_args.initial_input_dims), batch_size(network_args.batch_size), loss_function_type(network_args.loss_function_type) {    
+    Dimensions current_input_dims = input_dims;
+    if (!network_args.layer_arguments.empty()){
+        for (const auto& layer_args : network_args.layer_arguments) {
+            layer_args->batch_size = batch_size;
+            layers.emplace_back(layer_args->createLayer(layers.size(), ocl_setup, current_input_dims));
+            current_input_dims = layers.back()->output_dims;
+        }
     }
     optimizer = network_args.optimizer_parameters->createOptimizer(ocl_setup);
 }
 
 NeuralNetwork::NeuralNetwork(const OpenCLSetup& ocl_setup, const H5::H5File& file)
-: context(ocl_setup.context), queue(ocl_setup.queue), program(ocl_setup.program) {
+: context(ocl_setup.context), queue(ocl_setup.queue), program(ocl_setup.program), ocl_setup(ocl_setup) {
+    if (!file.attrExists("input_dims")) {
+        throw std::runtime_error("HDF5 file does not contain 'input_dims' attribute.");
+    }
+    try {
+        H5::Attribute attr = file.openAttribute("input_dims");
+        H5::DataSpace dataspace = attr.getSpace();
+
+        if (dataspace.getSimpleExtentNdims() != 1) {
+            throw std::runtime_error("Expected 1D attribute for input_dims");
+        }
+
+        hsize_t dims[1];
+        dataspace.getSimpleExtentDims(dims);  // Could crash if dataspace is invalid
+
+        std::vector<hsize_t> input_dims_vector(dims[0]);
+
+        attr.read(H5::PredType::NATIVE_HSIZE, input_dims_vector.data());
+
+        input_dims = Dimensions(input_dims_vector);
+    } catch (const H5::Exception& e) {
+        std::cerr << "HDF5 error: " << e.getCDetailMsg() << std::endl;
+    } catch (const std::exception& e) {
+        std::cerr << "Std error: " << e.what() << std::endl;
+    }
+
+
+
     if (file.attrExists("batch_size")) file.openAttribute("batch_size").read(H5::PredType::NATIVE_HSIZE, &batch_size);
     else batch_size = 1;
 
@@ -38,10 +63,26 @@ NeuralNetwork::NeuralNetwork(const OpenCLSetup& ocl_setup, const H5::H5File& fil
         std::string layer_id = std::to_string(i);
         H5::Group layer_group = layers_group.openGroup(layer_id);
         layers.emplace_back(LayerConfig::loadLayer(ocl_setup, layer_group, batch_size));
+        if (layers.size() == 1 && layers.back()->input_dims != input_dims) {
+            throw std::runtime_error("First layer input dimensions do not match the network's input dimensions.");
+            
+        }
     }
     
     H5::Group optimizer_group = file.openGroup("optimizer");
     optimizer = OptimizerConfig::loadOptimizer(ocl_setup, optimizer_group);
+}
+
+NeuralNetwork& NeuralNetwork::addDense(const size_t output_dims_size_t, ActivationType activation_type) {
+    Dimensions output_dims = Dimensions({output_dims_size_t});
+    Dimensions input_dims = this->input_dims;
+    if (!layers.empty()){
+        input_dims = layers.back()->output_dims;
+    }
+    auto layer_args = LayerConfig::makeDenseLayerArgs(output_dims, activation_type, batch_size);
+    layers.emplace_back(layer_args->createLayer(layers.size(), ocl_setup, input_dims));
+    
+    return *this;
 }
 
 int NeuralNetwork::findNextTrainableLayer(int start_idx) const {
@@ -113,53 +154,28 @@ void NeuralNetwork::backprop(const cl::Buffer& original_network_input_batch, con
     optimizer->step();
 }
 
-void NeuralNetwork::train(const std::vector<std::vector<float>>& inputs,
-                          const std::vector<std::vector<float>>& targets,
-                          int epochs) {
+void NeuralNetwork::train(DataProcessor& dataProcessor, int epochs) {
 
-    if (inputs.size() != targets.size()) {
-        std::cerr << "Error: Input and target datasets must have the same number of samples." << std::endl;
-        return;
-    }
+    dataProcessor.activateTrainPartition();
 
-    size_t input_single_size = inputs[0].size();
-    size_t output_single_size = targets[0].size();
-    size_t num_samples = inputs.size(); 
-
-    std::vector<size_t> indices(num_samples);
-    std::iota(indices.begin(), indices.end(), 0);
-
-    std::vector<float> current_batch_input_host(batch_size * input_single_size);
-    std::vector<float> current_batch_target_host(batch_size * output_single_size);
+    size_t output_single_size = dataProcessor.getTargetSize();
     std::vector<float> network_output_host(batch_size * output_single_size);
+    std::vector<float> current_batch_target_host(batch_size * output_single_size);
 
-    cl::Buffer current_batch_input_buf(context, CL_MEM_READ_WRITE, sizeof(float) * batch_size * input_single_size);
-    cl::Buffer current_batch_target_buf(context, CL_MEM_READ_WRITE, sizeof(float) * batch_size * output_single_size);
+    for (int epoch = 0; epoch < epochs; ++epoch) { 
+        float total_loss = 0.0f;  
+        dataProcessor.shuffleCurrentPartition();
+        for (const Batch& batch: dataProcessor){
+            cl::Buffer inputs = batch.inputs;
+            cl::Buffer targets = batch.targets;
+            size_t current_batch_actual_size = batch.batch_actual_size;
 
-    for (int epoch = 0; epoch < epochs; ++epoch) {
-        float total_loss = 0.0f;
-
-        std::shuffle(indices.begin(), indices.end(), std::mt19937(std::random_device{}()));
-
-        for (size_t i = 0; i < num_samples; i += batch_size) {
-            size_t current_batch_actual_size = std::min((size_t)batch_size, num_samples - i);
-
-            for (size_t j = 0; j < current_batch_actual_size; ++j) {
-                std::copy(inputs[indices[i + j]].begin(), inputs[indices[i + j]].end(),
-                          current_batch_input_host.begin() + j * input_single_size);
-                std::copy(targets[indices[i + j]].begin(), targets[indices[i + j]].end(),
-                          current_batch_target_host.begin() + j * output_single_size);
-            }
-
-            queue.enqueueWriteBuffer(current_batch_input_buf, CL_TRUE, 0,
-                                     sizeof(float) * current_batch_actual_size * input_single_size,
-                                     current_batch_input_host.data());
-            queue.enqueueWriteBuffer(current_batch_target_buf, CL_TRUE, 0,
+            queue.enqueueReadBuffer(targets, CL_TRUE, 0,
                                      sizeof(float) * current_batch_actual_size * output_single_size,
                                      current_batch_target_host.data());
 
-            cl::Buffer final_output_buf = forward(current_batch_input_buf, current_batch_actual_size);
-
+            cl::Buffer final_output_buf = forward(inputs, current_batch_actual_size);
+            
             queue.enqueueReadBuffer(final_output_buf, CL_TRUE, 0,
                                     sizeof(float) * current_batch_actual_size * output_single_size,
                                     network_output_host.data());
@@ -172,10 +188,11 @@ void NeuralNetwork::train(const std::vector<std::vector<float>>& inputs,
                 }
             }
 
-            backprop(current_batch_input_buf, current_batch_target_buf);
+            backprop(inputs, targets);
             queue.finish();
+
         }
-        float average_loss = total_loss / (num_samples * output_single_size);
+        float average_loss = total_loss / (dataProcessor.getActivePartition().size() * output_single_size);
         std::cout << "Epoch " << (epoch + 1) << " | Loss: " << average_loss << std::endl;
     }
 }
@@ -184,6 +201,15 @@ void NeuralNetwork::saveNetwork(const std::string& filename) const {
     try {
         H5::H5File file(filename, H5F_ACC_TRUNC);
         H5::DataSpace scalar_dataspace(H5S_SCALAR);
+
+        const std::vector<hsize_t>& dims = input_dims.dims;
+
+        hsize_t len = dims.size();
+        H5::DataSpace vector_dataspace(1, &len);
+
+        file.createAttribute(
+            "input_dims", H5::PredType::NATIVE_HSIZE, vector_dataspace
+        ).write(H5::PredType::NATIVE_HSIZE, dims.data());
 
         file.createAttribute(
             "batch_size", H5::PredType::NATIVE_HSIZE, scalar_dataspace
