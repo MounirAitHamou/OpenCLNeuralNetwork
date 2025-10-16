@@ -1,13 +1,10 @@
-__kernel void sgd_update_parameters(
-    __global float* params_buf,
-    __global const float* grads_buf,
-    const unsigned int num_elements,
-    const float learning_rate,
-    const float weight_decay_rate) {
+__kernel void sgdUpdateParameters(
+    __global float* p_parameters,
+    __global const float* p_gradients,
+    const float p_learningRate,
+    const float p_weightDecayRate) {
 
-    unsigned int gid = get_global_id(0);
-
-    if (gid >= num_elements) return;
+    unsigned int idx = get_global_id(0);
     
-    params_buf[gid] -= learning_rate * (grads_buf[gid] + weight_decay_rate * params_buf[gid]);
+    p_parameters[idx] -= p_learningRate * (p_gradients[idx] + p_weightDecayRate * p_parameters[idx]);
 }

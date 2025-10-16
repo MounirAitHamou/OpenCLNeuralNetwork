@@ -2,52 +2,53 @@
 
 #include "Optimizer/Optimizer.hpp"
 
-#include <map>
-#include <string>
-#include <iostream>
-
 class AdamWOptimizer : public Optimizer {
 public:
+    AdamWOptimizer(std::shared_ptr<Utils::SharedResources> p_sharedResources,
+                   float p_learningRate,
+                   float p_weightDecayRate,
+                   float p_beta1 = 0.9f,
+                   float p_beta2 = 0.999f,
+                   float p_epsilon = 1e-8f);
 
-    float beta1;
-    float beta2;
-    float epsilon;
-    unsigned int t;
-
-    std::map<std::string, std::pair<cl::Buffer, cl::Buffer>> moment_buffers;
-
-    AdamWOptimizer(const OpenCLSetup& ocl_setup,
-                   float learning_rate,
-                   float weight_decay_rate,
-                   float beta1 = 0.9f,
-                   float beta2 = 0.999f,
-                   float epsilon = 1e-8f)
-        : Optimizer(ocl_setup, learning_rate, weight_decay_rate),
-          beta1(beta1), beta2(beta2), epsilon(epsilon), t(1) {}
-    
-    AdamWOptimizer(const OpenCLSetup& ocl_setup, const H5::Group& optimizer_group);
+    AdamWOptimizer(std::shared_ptr<Utils::SharedResources> p_sharedResources,
+                   const H5::Group& p_optimizerGroup);
+                   
     ~AdamWOptimizer() = default;
 
-    void updateParameters(std::string param_id,
-                          cl::Buffer& params_buf,
-                          cl::Buffer& grads_buf,
-                          size_t num_elements) override;
+    bool equals(const cl::CommandQueue& p_queue, const Optimizer& p_other, std::map<size_t, std::pair<size_t, size_t>>& p_momentsSizes) const override;
+
+    cl::Event updateParameters(const cl::CommandQueue& p_concurrentQueue, 
+                               cl::Event& p_lastEvent, 
+                               const std::string& p_parametersId, 
+                               cl::Buffer& p_parameters, 
+                               cl::Buffer& p_gradients, 
+                               size_t p_numElements) override;
 
     void step() override;
 
     void print() const override {
         std::cout << "AdamW Optimizer:\n"
-                  << "Learning Rate: " << learning_rate << "\n"
-                  << "Weight Decay Rate: " << weight_decay_rate << "\n"
-                  << "Beta1: " << beta1 << "\n"
-                  << "Beta2: " << beta2 << "\n"
-                  << "Epsilon: " << epsilon << "\n";
+                  << "Learning Rate: " << m_learningRate << "\n"
+                  << "Weight Decay Rate: " << m_weightDecayRate << "\n"
+                  << "Beta1: " << m_beta1 << "\n"
+                  << "Beta2: " << m_beta2 << "\n"
+                  << "Epsilon: " << m_epsilon << "\n";
     }
 
-    OptimizerType getType() const override {
-        return OptimizerType::AdamW;
+    Utils::OptimizerType getType() const override {
+        return Utils::OptimizerType::AdamW;
     }
 
-    void saveOptimizer(H5::Group& optimizer_group,
-                                  const std::map<size_t, std::pair<size_t, size_t>>& moments_sizes) const override;
+    void saveOptimizer(const cl::CommandQueue& p_queue, H5::Group& p_optimizerGroup,
+        const std::map<size_t, std::pair<size_t, size_t>>& p_momentsSizes) const override;
+
+private:
+    float m_beta1;
+    float m_beta2;
+    float m_epsilon;
+    unsigned int m_t;
+
+    std::map<std::string, std::pair<cl::Buffer, cl::Buffer>> m_momentBuffers;
+    void setupKernels() override;
 };

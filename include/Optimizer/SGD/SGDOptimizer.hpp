@@ -1,37 +1,41 @@
 #pragma once
 
 #include "Optimizer/Optimizer.hpp"
-#include "Utils/OpenCLSetup.hpp"
-
-#include <iostream>
 
 class SGDOptimizer : public Optimizer {
 public:
 
-    SGDOptimizer(const OpenCLSetup& ocl_setup,
-                 float learning_rate,
-                 float weight_decay_rate)
-        : Optimizer(ocl_setup, learning_rate, weight_decay_rate) {}
+    SGDOptimizer(std::shared_ptr<Utils::SharedResources> p_sharedResources,
+                 float p_learningRate,
+                 float p_weightDecayRate);
 
-    SGDOptimizer(const OpenCLSetup& ocl_setup, const H5::Group& optimizer_group);
+    SGDOptimizer(std::shared_ptr<Utils::SharedResources> p_sharedResources,
+                 const H5::Group& p_optimizerGroup);
 
     ~SGDOptimizer() = default;
 
-    void updateParameters(std::string param_id,
-                          cl::Buffer& params_buf,
-                          cl::Buffer& grads_buf,
-                          size_t num_elements) override;
+    bool equals(const cl::CommandQueue& p_queue, const Optimizer& p_other, std::map<size_t, std::pair<size_t, size_t>>& p_momentsSizes) const override;
+
+    cl::Event updateParameters(const cl::CommandQueue& p_concurrentQueue, 
+                               cl::Event& p_lastEvent, 
+                               const std::string& p_parametersId, 
+                               cl::Buffer& p_parameters, 
+                               cl::Buffer& p_gradients, 
+                               size_t p_numElements) override;
 
     void print() const override {
         std::cout << "SGD Optimizer:\n"
-                  << "Learning Rate: " << learning_rate << "\n"
-                  << "Weight Decay Rate: " << weight_decay_rate << "\n";
+                  << "Learning Rate: " << m_learningRate << "\n"
+                  << "Weight Decay Rate: " << m_weightDecayRate << "\n";
     }
 
-    OptimizerType getType() const override {
-        return OptimizerType::SGD;
+    Utils::OptimizerType getType() const override {
+        return Utils::OptimizerType::SGD;
     }
 
-    void saveOptimizer(H5::Group& optimizer_group,
-                                  const std::map<size_t, std::pair<size_t, size_t>>& moments_sizes) const override;
+    void saveOptimizer(const cl::CommandQueue& p_queue, H5::Group& p_optimizerGroup,
+        const std::map<size_t, std::pair<size_t, size_t>>& p_momentsSizes) const override;
+
+private:
+    void setupKernels() override;
 };

@@ -1,191 +1,389 @@
 #include "Layer/Dense/DenseLayer.hpp"
 
-DenseLayer::DenseLayer(const size_t layer_id, const OpenCLSetup& ocl_setup,
-                       const Dimensions& input_dims, const Dimensions& output_dims,
-                       ActivationType act_type, size_t batch_size): 
-                       TrainableLayer(layer_id, ocl_setup, input_dims, output_dims, batch_size),
-                        activation_type(act_type){
-                        allocatePreActivationBuffer();
-                        initializeWeightsAndBiases();
-                        }
-
-DenseLayer::DenseLayer(const OpenCLSetup& ocl_setup, const H5::Group& layer_group, const size_t batch_size)
-: TrainableLayer(ocl_setup, batch_size) {
-    layer_group.openAttribute("layer_id").read(H5::PredType::NATIVE_HSIZE, &layer_id);
-
-    unsigned int input_dims_uint;
-    layer_group.openAttribute("input_dims").read(H5::PredType::NATIVE_UINT, &input_dims_uint);
-    input_dims = Dimensions({input_dims_uint});
-
-    unsigned int output_dims_uint;
-    layer_group.openAttribute("output_dims").read(H5::PredType::NATIVE_UINT, &output_dims_uint);
-    output_dims = Dimensions({output_dims_uint});
-
-    unsigned int activation_type_uint;
-    layer_group.openAttribute("activation_type").read(H5::PredType::NATIVE_UINT, &activation_type_uint);
-    activation_type = activationTypeFromUint(activation_type_uint);
-
-    std::vector<float> loaded_weights(getWeightsSize());
-    std::vector<float> loaded_biases(getBiasesSize());
-
-    layer_group.openDataSet("weights").read(loaded_weights.data(), H5::PredType::NATIVE_FLOAT);
-    layer_group.openDataSet("biases").read(loaded_biases.data(), H5::PredType::NATIVE_FLOAT);
-
-    size_t flat_input_size = input_dims.getTotalElements();
-    size_t flat_output_size = output_dims.getTotalElements();
-
-    weights = cl::Buffer(context, CL_MEM_READ_WRITE, flat_input_size * flat_output_size * sizeof(float));
-    biases = cl::Buffer(context, CL_MEM_READ_WRITE, flat_output_size * sizeof(float));
-    pre_activations = cl::Buffer(context, CL_MEM_READ_WRITE, batch_size * flat_output_size * sizeof(float));
-    outputs = cl::Buffer(context, CL_MEM_READ_WRITE, batch_size * flat_output_size * sizeof(float));
-    deltas = cl::Buffer(context, CL_MEM_READ_WRITE, batch_size * flat_output_size * sizeof(float));
-    weight_gradients = cl::Buffer(context, CL_MEM_READ_WRITE, flat_input_size * flat_output_size * sizeof(float));
-    bias_gradients = cl::Buffer(context, CL_MEM_READ_WRITE, flat_output_size * sizeof(float));
-
-    queue.enqueueWriteBuffer(weights, CL_TRUE, 0, loaded_weights.size() * sizeof(float), loaded_weights.data());
-    queue.enqueueWriteBuffer(biases, CL_TRUE, 0, loaded_biases.size() * sizeof(float), loaded_biases.data());
+DenseLayer::DenseLayer(const size_t p_layerId, 
+                       std::shared_ptr<Utils::SharedResources> p_sharedResources,
+                       const Utils::Dimensions& p_inputDimensions, 
+                       const Utils::Dimensions& p_outputDimensions,
+                       const Utils::ActivationType p_activationType, 
+                       const size_t p_batchSize,
+                       std::mt19937& p_rng)
+                       :
+                       TrainableLayer(p_layerId, 
+                                      p_sharedResources,
+                                      p_inputDimensions,
+                                      Utils::Dimensions::validateDenseDimensions(p_outputDimensions),
+                                      p_activationType,
+                                      p_batchSize) {
+    initializeWeightsAndBiases(p_rng);
+    allocateDenseLayerBuffers();
+    setupKernels();
 }
 
-void DenseLayer::initializeWeightsAndBiases() {
-    size_t flat_input_size = input_dims.getTotalElements();
-    size_t flat_output_size = output_dims.getTotalElements();
+DenseLayer::DenseLayer(std::shared_ptr<Utils::SharedResources> p_sharedResources,
+                       const H5::Group& p_layerGroup, 
+                       const size_t p_batchSize)
+: TrainableLayer(p_sharedResources, p_layerGroup, p_batchSize) {
+    
 
-    std::vector<float> h_weights(flat_input_size * flat_output_size);
-    std::vector<float> h_biases(flat_output_size);
+    H5::DataSet inputDataset = p_layerGroup.openDataSet("inputDimensions");
+    H5::DataSpace inputSpace = inputDataset.getSpace();
 
-    float limit = std::sqrt(6.0f / (flat_input_size + flat_output_size));
+    hsize_t inputDims[1];
+    inputSpace.getSimpleExtentDims(inputDims);
+
+    std::vector<size_t> inputDimensionsVec(inputDims[0]);
+    inputDataset.read(inputDimensionsVec.data(), H5::PredType::NATIVE_HSIZE);
+
+    m_inputDimensions = Utils::Dimensions(inputDimensionsVec);
+
+    H5::DataSet outputDataset = p_layerGroup.openDataSet("outputDimensions");
+    H5::DataSpace outputSpace = outputDataset.getSpace();
+
+    hsize_t outputDims[1];
+    outputSpace.getSimpleExtentDims(outputDims);
+
+    std::vector<size_t> outputDimensionsVec(outputDims[0]);
+    outputDataset.read(outputDimensionsVec.data(), H5::PredType::NATIVE_HSIZE);
+    m_outputDimensions = Utils::Dimensions(outputDimensionsVec);
+
+    H5::DataSet weightsDataset = p_layerGroup.openDataSet("weights");
+    H5::DataSpace weightsSpace = weightsDataset.getSpace();
+
+    hsize_t weightsDims[1];
+    weightsSpace.getSimpleExtentDims(weightsDims);
+
+    std::vector<float> loadedWeights(weightsDims[0]);
+    weightsDataset.read(loadedWeights.data(), H5::PredType::NATIVE_FLOAT);
+
+    H5::DataSet biasesDataset = p_layerGroup.openDataSet("biases");
+    H5::DataSpace biasesSpace = biasesDataset.getSpace();
+
+    hsize_t biasesDims[1];
+    biasesSpace.getSimpleExtentDims(biasesDims);
+
+    std::vector<float> loadedBiases(biasesDims[0]);
+    biasesDataset.read(loadedBiases.data(), H5::PredType::NATIVE_FLOAT);
+
+    size_t flatInputSize = m_inputDimensions.getTotalElements();
+    size_t flatOutputSize = m_outputDimensions.getTotalElements();
+        
+    m_weights          = cl::Buffer(m_sharedResources->getContext(), CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, flatOutputSize * flatInputSize * sizeof(float), loadedWeights.data());
+    m_biases           = cl::Buffer(m_sharedResources->getContext(), CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, flatOutputSize * sizeof(float), loadedBiases.data());
+    allocateLayerBuffers();
+    allocateDenseLayerBuffers();
+    setupKernels();
+}
+
+cl::Event DenseLayer::runForward(const cl::CommandQueue& p_forwardBackpropQueue,
+                                 const cl::Buffer& p_inputs) {
+    size_t flatInputSize = m_inputDimensions.getTotalElements();
+    size_t flatOutputSize = m_outputDimensions.getTotalElements();
+    
+    cl_command_queue raw_queue = p_forwardBackpropQueue.get();
+
+    auto status = clblast::Gemm<float>(
+        clblast::Layout::kRowMajor,
+        clblast::Transpose::kNo, clblast::Transpose::kYes,
+        m_batchSize, flatOutputSize, flatInputSize,
+        NO_SCALAR,
+        p_inputs(), NO_OFFSET, flatInputSize,
+        getWeights()(), NO_OFFSET, flatInputSize,
+        CLEAR_C,
+        getPreActivations()(), NO_OFFSET, flatOutputSize,
+        &raw_queue, nullptr,
+        m_clblastWorkspace()
+    );
+
+    if (status != clblast::StatusCode::kSuccess) {
+        std::cerr << "Forward CLBlast GEMM failed: " << static_cast<int>(status) << " for layer " << m_layerId << std::endl;
+        throw std::runtime_error("CLBlast GEMM failed");
+    }
+
+    cl::Event kernelEvent;
+
+    p_forwardBackpropQueue.enqueueNDRangeKernel(m_denseBiasActivationKernel, cl::NullRange,
+                               cl::NDRange(flatOutputSize, m_batchSize), cl::NullRange, 
+                               nullptr, &kernelEvent);
+
+    return kernelEvent;
+}
+
+cl::Event DenseLayer::computeDeltas(const cl::CommandQueue& p_forwardBackpropQueue) {
+    cl::Event kernelEvent;
+    p_forwardBackpropQueue.enqueueNDRangeKernel(m_denseBackpropActivationKernel, cl::NullRange,
+                               cl::NDRange(m_outputDimensions.getTotalElements(), m_batchSize), cl::NullRange,
+                               nullptr, &kernelEvent);
+    return kernelEvent;
+}
+
+void DenseLayer::backpropDeltas(const cl::CommandQueue& p_forwardBackpropQueue, const cl::Buffer& p_previousLayerDeltas, const Utils::Dimensions p_previousLayerOutputDimensions) {
+    size_t previousLayerFlatOutputSize = p_previousLayerOutputDimensions.getTotalElements();
+    size_t flatOutputSize = m_outputDimensions.getTotalElements();
+
+    cl_command_queue raw_queue = p_forwardBackpropQueue.get();
+
+    if (m_clblastDeltaWorkspace() == nullptr) {
+        size_t requiredWorkspaceSize = m_maxBatchSize * flatOutputSize * sizeof(float);
+
+        m_clblastDeltaWorkspace = cl::Buffer(
+            m_sharedResources->getContext(),
+            CL_MEM_READ_WRITE,
+            requiredWorkspaceSize
+        );
+    }
+
+    auto status = clblast::Gemm<float>(
+        clblast::Layout::kRowMajor,
+        clblast::Transpose::kNo, clblast::Transpose::kNo,
+        m_batchSize, previousLayerFlatOutputSize, flatOutputSize,
+        NO_SCALAR,
+        m_deltas.get(), NO_OFFSET, flatOutputSize,
+        m_weights.get(), NO_OFFSET, previousLayerFlatOutputSize,
+        CLEAR_C,
+        p_previousLayerDeltas.get(), NO_OFFSET, previousLayerFlatOutputSize,
+        &raw_queue, nullptr,
+        m_clblastDeltaWorkspace()
+    );
+
+    if (status != clblast::StatusCode::kSuccess) {
+        std::cerr << "Backprop CLBlast GEMM failed: " << static_cast<int>(status) << " for layer " << m_layerId << std::endl;
+        throw std::runtime_error("CLBlast GEMM failed");
+    }
+}
+
+std::pair<cl::Event, cl::Event> DenseLayer::computeGradients(const cl::CommandQueue& p_deltaToGradientQueue, 
+                                                               const cl::CommandQueue& p_concurrentQueue, 
+                                                               cl::Event& p_deltaEvent, 
+                                                               const cl::Buffer& p_inputs) {
+    std::vector<cl::Event> deltaBackPropWaitList = { p_deltaEvent };
+
+    p_deltaToGradientQueue.enqueueBarrierWithWaitList(&deltaBackPropWaitList);
+
+    size_t flatInputSize = m_inputDimensions.getTotalElements();
+    size_t flatOutputSize = m_outputDimensions.getTotalElements();
+    
+    cl_event raw_gemm_event = nullptr;
+    cl_command_queue raw_queue = p_deltaToGradientQueue.get();
+
+    auto status = clblast::Gemm<float>(
+        clblast::Layout::kRowMajor,
+        clblast::Transpose::kYes,
+        clblast::Transpose::kNo,
+        flatOutputSize, flatInputSize, m_batchSize,
+        NO_SCALAR,
+        getDeltas().get(), NO_OFFSET, flatOutputSize,
+        p_inputs.get(), NO_OFFSET, flatInputSize,
+        CLEAR_C,
+        getWeightsGradients().get(), NO_OFFSET, flatInputSize,
+        &raw_queue,
+        &raw_gemm_event,
+        m_clblastWorkspace()
+    );
+
+    if (status != clblast::StatusCode::kSuccess) {
+        std::cerr << "Weight Gradients CLBlast GEMM failed: " << static_cast<int>(status) << " for layer " << m_layerId << std::endl;
+        throw std::runtime_error("CLBlast GEMM failed");
+    }
+
+    cl::Event gemmEvent(raw_gemm_event, true);
+
+    cl_event raw_gemv_event = nullptr;
+
+    
+    status = clblast::Gemv<float>(
+        clblast::Layout::kRowMajor,
+        clblast::Transpose::kYes,
+        m_batchSize, flatOutputSize,
+        NO_SCALAR,
+        getDeltas().get(), NO_OFFSET, flatOutputSize,
+        m_onesBuffer(), NO_OFFSET, 1,
+        CLEAR_C,
+        getBiasesGradients().get(), NO_OFFSET, 1,
+        &raw_queue,
+        &raw_gemv_event
+    );
+
+    if (status != clblast::StatusCode::kSuccess) {
+        std::cerr << "Bias Gradients CLBlast GEMM failed: " << static_cast<int>(status) << " for layer " << m_layerId << std::endl;
+        throw std::runtime_error("CLBlast GEMV failed");
+    }
+
+    cl::Event gemvEvent(raw_gemv_event, true);
+
+    m_denseAverageWeightGradientsKernel.setArg(2, (cl_uint)m_batchSize);
+
+    cl::Event weightGradientsAverageEvent;
+    std::vector<cl::Event> weightGradientsAverageWaitList = {gemmEvent};
+    
+    p_concurrentQueue.enqueueNDRangeKernel(m_denseAverageWeightGradientsKernel, cl::NullRange,
+                                    cl::NDRange(flatOutputSize, flatInputSize), cl::NullRange, &weightGradientsAverageWaitList, &weightGradientsAverageEvent);
+    
+    m_denseAverageBiasGradientsKernel.setArg(1, (cl_uint)m_batchSize);
+    
+    cl::Event biasGradientsAverageEvent;
+    std::vector<cl::Event> biasGradientsAverageWaitList = {gemvEvent};
+
+    p_concurrentQueue.enqueueNDRangeKernel(m_denseAverageBiasGradientsKernel, cl::NullRange,
+                                    cl::NDRange(flatOutputSize), cl::NullRange, &biasGradientsAverageWaitList, &biasGradientsAverageEvent);
+
+    return { std::move(weightGradientsAverageEvent), std::move(biasGradientsAverageEvent) };
+}
+
+void DenseLayer::saveLayer(const cl::CommandQueue& p_queue, 
+                           H5::Group& p_layerGroup) const {
+    H5::DataSpace scalarSpace(H5S_SCALAR);
+
+    p_layerGroup.createAttribute("layerId", H5::PredType::NATIVE_HSIZE, scalarSpace)
+        .write(H5::PredType::NATIVE_HSIZE, &m_layerId);
+
+    unsigned int layerType = static_cast<unsigned int>(getType());
+    p_layerGroup.createAttribute("layerType", H5::PredType::NATIVE_UINT, scalarSpace)
+        .write(H5::PredType::NATIVE_UINT, &layerType);
+
+    std::vector<hsize_t> inputDimensionsVec = m_inputDimensions.getDimensions();
+    hsize_t inputDims[1] = { inputDimensionsVec.size() };
+    H5::DataSpace inputDataspace(1, inputDims);
+
+    H5::DataSet inputDataset = p_layerGroup.createDataSet(
+        "inputDimensions", 
+        H5::PredType::NATIVE_HSIZE, 
+        inputDataspace
+    );
+    inputDataset.write(inputDimensionsVec.data(), H5::PredType::NATIVE_HSIZE);
+
+    std::vector<hsize_t> outputDimensionsVec = m_outputDimensions.getDimensions();
+    hsize_t outputDims[1] = { outputDimensionsVec.size() };
+    H5::DataSpace outputDataspace(1, outputDims);
+    H5::DataSet outputDataset = p_layerGroup.createDataSet(
+        "outputDimensions", 
+        H5::PredType::NATIVE_HSIZE, 
+        outputDataspace
+    );
+    outputDataset.write(outputDimensionsVec.data(), H5::PredType::NATIVE_HSIZE);
+
+    unsigned int activationTypeUInt = static_cast<unsigned int>(m_activationType);
+    p_layerGroup.createAttribute(
+        "activationType", H5::PredType::NATIVE_UINT, scalarSpace
+    ).write(H5::PredType::NATIVE_UINT, &activationTypeUInt);
+    
+    Utils::saveBuffer(p_queue, m_weights, p_layerGroup, "weights", getWeightsSize());
+    Utils::saveBuffer(p_queue, m_biases, p_layerGroup, "biases", getBiasesSize()); 
+}
+
+
+bool DenseLayer::equals(const cl::CommandQueue& p_queue, const Layer& p_other) const {
+    if (p_other.getType() != Utils::LayerType::Dense) {
+        return false;
+    }
+
+    const DenseLayer& otherDense = static_cast<const DenseLayer&>(p_other);
+
+    if (m_layerId != otherDense.m_layerId ||
+        m_inputDimensions != otherDense.m_inputDimensions ||
+        m_outputDimensions != otherDense.m_outputDimensions ||
+        m_activationType != otherDense.m_activationType ||
+        m_batchSize != otherDense.m_batchSize ||
+        !Utils::compareCLBuffers(p_queue, m_weights, otherDense.m_weights, getWeightsSize()) ||
+        !Utils::compareCLBuffers(p_queue, m_biases, otherDense.m_biases, getBiasesSize())){
+        return false;
+    }
+
+    return true;
+}
+
+void DenseLayer::print(const cl::CommandQueue& p_forwardBackpropQueue) const {
+    std::cout << "----- Dense Layer Info -----\n";
+    std::cout << "Dense Layer ID: " << m_layerId << "\n";
+    std::cout << "Input Dimensions: " << m_inputDimensions.toString() << "\n";
+    std::cout << "Output Dimensions: " << m_outputDimensions.toString() << "\n";
+    std::cout << "Activation Type: " << static_cast<unsigned int>(m_activationType) << "\n";
+    std::cout << "Weights Size: " << getWeightsSize() << "\n";
+    std::cout << "Biases Size: " << getBiasesSize() << "\n";
+    Utils::printCLBuffer(p_forwardBackpropQueue, m_weights, getWeightsSize(), "Weights");
+    Utils::printCLBuffer(p_forwardBackpropQueue, m_biases, getBiasesSize(), "Biases");
+    Utils::printCLBuffer(p_forwardBackpropQueue, m_preActivations, m_batchSize * getTotalOutputElements(), "Pre-activations");
+    Utils::printCLBuffer(p_forwardBackpropQueue, m_outputs, m_batchSize * getTotalOutputElements(), "Outputs");
+    Utils::printCLBuffer(p_forwardBackpropQueue, m_deltas, m_batchSize * getTotalOutputElements(), "Deltas");
+    Utils::printCLBuffer(p_forwardBackpropQueue, m_weightsGradients, getWeightsSize(), "Weight Gradients");
+    Utils::printCLBuffer(p_forwardBackpropQueue, m_biasesGradients, getBiasesSize(), "Bias Gradients");
+    std::cout << "----------------------------------------\n";
+}
+
+void DenseLayer::allocateDenseLayerBuffers() {
+    m_weightsGradients = cl::Buffer(m_sharedResources->getContext(), CL_MEM_READ_WRITE, getWeightsSize() * sizeof(float));
+
+    m_deltas           = cl::Buffer(m_sharedResources->getContext(), CL_MEM_READ_WRITE, m_batchSize * getTotalOutputElements() * sizeof(float));
+    
+    m_biasesGradients  = cl::Buffer(m_sharedResources->getContext(), CL_MEM_READ_WRITE, getBiasesSize() * sizeof(float));
+    
+    m_preActivations   = cl::Buffer(m_sharedResources->getContext(), CL_MEM_READ_WRITE, m_batchSize * getTotalOutputElements() * sizeof(float));
+
+    m_onesBuffer        = cl::Buffer(m_sharedResources->getContext(), CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, m_batchSize * sizeof(float), std::vector<float>(m_batchSize, 1.0f).data());
+    
+    size_t flatInputSize = m_inputDimensions.getTotalElements();
+    size_t flatOutputSize = m_outputDimensions.getTotalElements();
+
+    size_t requiredWorkspaceSize = std::max({
+        m_batchSize * flatOutputSize,
+        flatOutputSize * flatInputSize
+    });
+
+    m_clblastWorkspace = cl::Buffer(
+        m_sharedResources->getContext(),
+        CL_MEM_READ_WRITE,
+        requiredWorkspaceSize * sizeof(float)
+    );
+}
+
+void DenseLayer::initializeWeightsAndBiases(std::mt19937& p_rng) {
+    std::vector<float> h_weights(getWeightsSize());
+    std::vector<float> h_biases(getBiasesSize());
+
+    float limit = std::sqrt(6.0f / (float)(getTotalInputElements() + getTotalOutputElements()));
 
     for (auto& weight : h_weights) {
-        weight = getRandomWeight(-limit, limit);
+        weight = getRandomValue(-limit, limit, p_rng);
     }
     for (auto& bias : h_biases) {
-        bias = getRandomWeight(-0.5f, 0.5f);
+        bias = getRandomValue(-0.5f, 0.5f, p_rng);
     }
 
-    queue.enqueueWriteBuffer(weights, CL_TRUE, 0, h_weights.size() * sizeof(float), h_weights.data());
-    queue.enqueueWriteBuffer(biases, CL_TRUE, 0, h_biases.size() * sizeof(float), h_biases.data());
+    m_weights = cl::Buffer(m_sharedResources->getContext(), CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, h_weights.size() * sizeof(float), h_weights.data());
+    m_biases  = cl::Buffer(m_sharedResources->getContext(), CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, h_biases.size() * sizeof(float), h_biases.data());
 }
 
-void DenseLayer::runForward(const cl::Buffer& input_buffer) {
-    size_t flat_input_size = input_dims.getTotalElements();
-    size_t flat_output_size = output_dims.getTotalElements();
+void DenseLayer::setupKernels() {
+    cl_int err;
 
-    cl::Kernel kernel(program, "dense_forward_batch");
-
-    kernel.setArg(0, weights);
-    kernel.setArg(1, biases);
-    kernel.setArg(2, input_buffer);
-    kernel.setArg(3, outputs);
-    kernel.setArg(4, pre_activations);
-    kernel.setArg(5, (cl_uint)flat_input_size);
-    kernel.setArg(6, (cl_uint)flat_output_size);
-    kernel.setArg(7, (cl_uint)batch_size);
-    kernel.setArg(8, (cl_uint)activation_type);
-
-    queue.enqueueNDRangeKernel(kernel, cl::NullRange,
-                               cl::NDRange(flat_output_size, batch_size), cl::NullRange);
-}
-
-void DenseLayer::computeOutputDeltas(const cl::Buffer& true_labels_buffer,
-                                     const LossFunctionType& loss_function_type) {
-    size_t flat_output_size = output_dims.getTotalElements();
-
-    cl::Kernel kernel(program, "dense_compute_output_deltas_batch");
-
-    kernel.setArg(0, pre_activations);
-    kernel.setArg(1, outputs);
-    kernel.setArg(2, true_labels_buffer);
-    kernel.setArg(3, deltas);
-    kernel.setArg(4, (cl_uint)flat_output_size);
-    kernel.setArg(5, (cl_uint)batch_size);
-    kernel.setArg(6, (cl_uint)activation_type);
-    kernel.setArg(7, (cl_uint)loss_function_type);
-
-    queue.enqueueNDRangeKernel(kernel, cl::NullRange,
-                               cl::NDRange(flat_output_size, batch_size), cl::NullRange);
-}
-
-void DenseLayer:: backpropDeltas(const cl::Buffer& next_layer_deltas,
-                                 const cl::Buffer* next_layer_weights_ptr,
-                                 const size_t next_layer_output_size) {
-
-    size_t flat_output_size = output_dims.getTotalElements();
-    cl::Kernel kernel;
-    if (next_layer_weights_ptr != nullptr) {
-        kernel = cl::Kernel(program, "dense_backprop_deltas_with_weights_batch");
-        kernel.setArg(0, *next_layer_weights_ptr);
-        kernel.setArg(1, next_layer_deltas);
-        kernel.setArg(2, deltas);
-        kernel.setArg(3, pre_activations);
-        kernel.setArg(4, (cl_uint)flat_output_size);
-        kernel.setArg(5, (cl_uint)(next_layer_output_size));
-        kernel.setArg(6, (cl_uint)batch_size);
-        kernel.setArg(7, (cl_uint)activation_type);
+    m_denseBiasActivationKernel = cl::Kernel(m_sharedResources->getProgram(), "denseBiasActivation", &err);
+    if (err != CL_SUCCESS) {
+        throw std::runtime_error("Failed to create denseBiasActivation kernel");
     }
-    else {
-        kernel = cl::Kernel(program, "dense_backprop_deltas_no_weights_batch");
-        kernel.setArg(0, next_layer_deltas);
-        kernel.setArg(1, deltas);
-        kernel.setArg(2, pre_activations);
-        kernel.setArg(3, (cl_uint)flat_output_size);
-        kernel.setArg(4, (cl_uint)batch_size);
-        kernel.setArg(5, (cl_uint)activation_type);
+    m_denseBiasActivationKernel.setArg(0, getPreActivations());
+    m_denseBiasActivationKernel.setArg(1, getBiases());
+    m_denseBiasActivationKernel.setArg(2, getOutputs());
+    m_denseBiasActivationKernel.setArg(3, (cl_uint)getTotalOutputElements());
+    m_denseBiasActivationKernel.setArg(4, (cl_uint)getActivationType());
+
+    m_denseBackpropActivationKernel = cl::Kernel(m_sharedResources->getProgram(), "denseBackpropActivation", &err);
+    if (err != CL_SUCCESS) {
+        throw std::runtime_error("Failed to create denseBackpropActivation kernel");
     }
-    
+    m_denseBackpropActivationKernel.setArg(0, getDeltas());
+    m_denseBackpropActivationKernel.setArg(1, getPreActivations());
+    m_denseBackpropActivationKernel.setArg(2, (cl_uint)getTotalOutputElements());
+    m_denseBackpropActivationKernel.setArg(3, (cl_uint)getActivationType());
 
-    queue.enqueueNDRangeKernel(kernel, cl::NullRange,
-                               cl::NDRange(flat_output_size, batch_size), cl::NullRange);
-}
+    m_denseAverageWeightGradientsKernel = cl::Kernel(m_sharedResources->getProgram(), "denseAverageWeightsGradients", &err);
+    if (err != CL_SUCCESS) {
+        throw std::runtime_error("Failed to create denseAverageWeightsGradients kernel");
+    }
+    m_denseAverageWeightGradientsKernel.setArg(0, getWeightsGradients());
+    m_denseAverageWeightGradientsKernel.setArg(1, (cl_uint)getTotalInputElements());
 
-void DenseLayer::calculateWeightGradients(const cl::Buffer& inputs_to_current_layer) {
-    size_t flat_input_size = input_dims.getTotalElements();
-    size_t flat_output_size = output_dims.getTotalElements();
-
-    cl::Kernel kernel(program, "dense_calculate_weight_gradients_batch");
-
-    kernel.setArg(0, inputs_to_current_layer);
-    kernel.setArg(1, deltas);
-    kernel.setArg(2, weight_gradients);
-    kernel.setArg(3, (cl_uint)flat_input_size);
-    kernel.setArg(4, (cl_uint)flat_output_size);
-    kernel.setArg(5, (cl_uint)batch_size);
-
-    queue.enqueueNDRangeKernel(kernel, cl::NullRange,
-                               cl::NDRange(flat_output_size, flat_input_size), cl::NullRange);
-}
-
-void DenseLayer::calculateBiasGradients() {
-    size_t flat_output_size = output_dims.getTotalElements();
-
-    cl::Kernel kernel(program, "dense_calculate_bias_gradients_batch");
-
-    kernel.setArg(0, deltas);
-    kernel.setArg(1, bias_gradients);
-    kernel.setArg(2, (cl_uint)flat_output_size);
-    kernel.setArg(3, (cl_uint)batch_size);
-
-    queue.enqueueNDRangeKernel(kernel, cl::NullRange,
-                               cl::NDRange(flat_output_size), cl::NullRange);
-}
-
-void DenseLayer::saveLayer(H5::Group& layer_group) const {
-    H5::DataSpace scalar_space(H5S_SCALAR);
-
-    size_t input_dims_size = input_dims.getTotalElements();
-    layer_group.createAttribute(
-        "input_dims", H5::PredType::NATIVE_HSIZE, scalar_space
-    ).write(H5::PredType::NATIVE_HSIZE, &input_dims_size);
-
-    size_t output_dims_size = output_dims.getTotalElements();
-    layer_group.createAttribute(
-        "output_dims", H5::PredType::NATIVE_HSIZE, scalar_space
-    ).write(H5::PredType::NATIVE_HSIZE, &output_dims_size);
-
-    unsigned int activation_type_int = static_cast<unsigned int>(activation_type);
-    layer_group.createAttribute(
-        "activation_type", H5::PredType::NATIVE_UINT, scalar_space
-    ).write(H5::PredType::NATIVE_UINT, &activation_type_int);
-    
-    saveBuffer(weights, layer_group, "weights", getWeightsSize());
-    saveBuffer(biases, layer_group, "biases", getBiasesSize());   
+    m_denseAverageBiasGradientsKernel = cl::Kernel(m_sharedResources->getProgram(), "denseAverageBiasesGradients", &err);
+    if (err != CL_SUCCESS) {
+        throw std::runtime_error("Failed to create denseAverageBiasesGradients kernel");
+    }
+    m_denseAverageBiasGradientsKernel.setArg(0, getBiasesGradients());
 }

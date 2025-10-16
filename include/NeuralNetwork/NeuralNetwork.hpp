@@ -1,56 +1,90 @@
 #pragma once
 
-#include "Utils/NetworkConfig.hpp"
-#include "DataProcessor/AllDataProcessors.hpp"
+#include "Utils/NetworkArgs.hpp"
+#include "DataLoader/AllDataLoaders.hpp"
+#include "Utils/PolicyBatch.hpp"
 
 #include <algorithm>
 #include <iostream>
 #include <vector>
 #include <memory>
+#include <thread>
+#include <future>
 
 class NeuralNetwork {
 public:
-   
-    std::vector<std::unique_ptr<Layer>> layers;
-
-    size_t batch_size;
-    Dimensions input_dims;
-
-    OpenCLSetup ocl_setup;
-    cl::Context context;
-    cl::CommandQueue queue;
-    cl::Program program;
-
-    std::unique_ptr<Optimizer> optimizer;
-
-    LossFunctionType loss_function_type;
-
     NeuralNetwork() = default;
 
-    NeuralNetwork(const OpenCLSetup& ocl_setup, NetworkConfig::NetworkArgs network_args);
-    NeuralNetwork(const OpenCLSetup& ocl_setup, const H5::H5File& file);
+    NeuralNetwork(Utils::OpenCLResources&& p_oclResources, 
+                  Utils::NetworkArgs p_networkArgs,
+                  size_t p_seed);
+    
+    std::vector<float> predict(const cl::Buffer& p_inputBatch, size_t p_batchSize);
+    double trainStepLoss(const Batch& p_batch, bool p_lossReporting=false);
+    void trainStepPolicy(const PolicyBatch& p_batch);
+    void train(DataLoader& p_dataLoader, int p_epochs, bool p_lossReporting=false);
 
-    int findNextTrainableLayer(int start_idx) const;
+    NeuralNetwork& addDense(const size_t p_numOutputNeurons, const Utils::ActivationType p_activationType = Utils::ActivationType::Linear);
+    NeuralNetwork& addConvolutional(const Utils::FilterDimensions& p_filterDimensions, const Utils::StrideDimensions& p_strideDimensions, const Utils::PaddingType p_paddingType, const Utils::ActivationType p_activationType);
 
-    cl::Buffer forward(const cl::Buffer& initial_input_batch, size_t current_batch_actual_size);
-    void backprop(const cl::Buffer& original_network_input_batch, const cl::Buffer& target_batch_buf);
-    void train(DataProcessor& dataProcessor, int epochs);
-
-
-    NeuralNetwork& addDense(const size_t output_dims_int, ActivationType activation_type);
-
-    void printCLBuffer(const cl::Buffer& buffer, size_t size, const std::string& label = "Buffer") {
-        std::vector<float> host_data(size);
-        // Enqueue a blocking read to transfer data from device to host
-        queue.enqueueReadBuffer(buffer, CL_TRUE, 0, sizeof(float) * size, host_data.data());
-        std::cout << label << " Buffer Data: ";
-        for (const auto& value : host_data) {
-            std::cout << value << " ";
+    void print() const {
+        std::cout << "Neural Network Details:\n";
+        std::cout << "Input Dimensions: " << m_inputDimensions.toString() << "\n";
+        std::cout << "Loss Function: ";
+        switch (m_lossFunctionType) {
+            case Utils::LossFunctionType::MeanSquaredError:
+                std::cout << "Mean Squared Error\n";
+                break;
+            case Utils::LossFunctionType::BinaryCrossEntropy:
+                std::cout << "Binary Cross Entropy\n";
+                break;
+            default:
+                std::cout << "Unknown\n";
+                break;
         }
-        std::cout << "\n";
+        std::cout << "Batch Size: " << m_batchSize << "\n";
+        std::cout << "Layers: \n\n";
+        for(const auto& layer : m_layers){
+            layer->print(m_oclResources->getForwardBackpropQueue());
+        }
+        
+        std::cout << "Optimizer: \n\n";
+        m_optimizer->print();
     }
 
-    void saveNetwork(const std::string& filename) const;
+    void saveNetwork(const std::string& p_fileName) const;
     
-    static NeuralNetwork loadNetwork(const OpenCLSetup& ocl_setup, const std::string& file_name);
+    static NeuralNetwork loadNetwork(std::shared_ptr<Utils::SharedResources> p_sharedResources, const std::string& p_fileName);
+
+    bool equals(const NeuralNetwork& p_other) const;
+
+    std::shared_ptr<Utils::SharedResources> getSharedResources() const {
+        return m_oclResources->getSharedResources();
+    }
+private:
+    std::vector<std::unique_ptr<Layer>> m_layers;
+
+    size_t m_batchSize;
+    Utils::Dimensions m_inputDimensions;
+
+    std::unique_ptr<Utils::OpenCLResources> m_oclResources;
+
+    std::unique_ptr<Optimizer> m_optimizer;
+
+    Utils::LossFunctionType m_lossFunctionType;
+
+    cl::Kernel m_lossGradientKernel;
+    cl::Kernel m_policyGradientKernel;
+
+    std::mt19937 m_rng;
+
+    NeuralNetwork(Utils::OpenCLResources&& p_oclResources, const H5::H5File& p_file);
+
+    double computeLossAsync(cl::Event& p_forwardEvent, const std::vector<float>& p_batchTargets);
+
+    cl::Event forward(const cl::Buffer& p_batchInputs, size_t p_batchSize);
+    void computeLossGradients(const cl::Buffer& p_batchTargets);
+    void computePolicyGradients(const cl::Buffer& p_batchActions, const cl::Buffer& p_batchRewards);
+    void backward(const cl::Buffer& p_batchInputs);
+    void setupKernels();
 };

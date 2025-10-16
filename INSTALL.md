@@ -37,6 +37,27 @@ cmake -A x64 -D CMAKE_INSTALL_PREFIX=./OpenCL-SDK/install -B ./OpenCL-SDK/build 
 cmake --build OpenCL-SDK/build --config Release --target install -- /m /v:minimal
 ```
 
+#### 2.3. Clone and Build CLBlast
+- git clone https://github.com/CNugteren/CLBlast
+- Navigate to the CLBlast directory:
+```bash
+cd CLBlast
+```
+
+- Create a build directory and navigate into it:
+```bash
+mkdir build && cd build
+```
+
+- Run CMake to configure the project. This command will generate the Visual Studio project files. Make sure to replace C:/GitHub/OpenCL-SDK/install with the correct path where you installed the OpenCL SDK.
+
+```bash
+cmake -DOPENCL_INCLUDE_DIRS="C:/GitHub/OpenCL-SDK/install/include" -DOPENCL_LIBRARIES="C:/GitHub/OpenCL-SDK/install/lib/OpenCL.lib" ..
+```
+- Build the CLBlast project:
+```bash
+cmake --build . --config Release
+```
 
 ## 3. Install HDF5 Library
 - Download the HDF5 library from the official HDF Group releases page:
@@ -49,8 +70,15 @@ cmake --build OpenCL-SDK/build --config Release --target install -- /m /v:minima
 ## 4. Configure Project
 
 - In the root directory of OpenCLNeuralNetwork, open CMakeLists.txt and set your OpenCL SDK path:
+
+- For example, I pulled the OpenCL SDK to `C:/GitHub/OpenCL-SDK`, so in the CMakeLists.txt file, the default path is set as follows:
 ```cmake
 set(OPENCL_SDK_PATH "C:/GitHub/OpenCL-SDK/install")
+```
+
+- If you installed CLBlast to a custom location, set the path in CMakeLists.txt, I pulled it to `C:/GitHub/CLBlast`, so I set the path as follows:
+```cmake
+set(CLBLAST_DIR "C:/GitHub/CLBlast")
 ```
 
 - If you installed HDF5 to a custom location, set the path in CMakeLists.txt:

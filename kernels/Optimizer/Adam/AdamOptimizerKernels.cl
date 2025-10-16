@@ -1,27 +1,29 @@
-__kernel void adam_update_parameters(
-    __global float* params,
-    __global float* grads,
-    __global float* m,
-    __global float* v,
-    float learning_rate,
-    float beta1,
-    float beta2,
-    float epsilon,
-    int num_elements,
-    float weight_decay_rate,
-    float beta1_pow_t,
-    float beta2_pow_t
+__kernel void adamUpdateParameters(
+    __global float* p_parameters,
+    __global const float* p_gradients,
+    __global float* p_m,
+    __global float* p_v,
+    float p_learningRate,
+    float p_beta1,
+    float p_beta2,
+    float p_epsilon,
+    float p_weightDecayRate,
+    float p_beta1PowT,
+    float p_beta2PowT
 ) {
-    int gid = get_global_id(0);
+    int idx = get_global_id(0);
 
-    if (gid >= num_elements) return;
+    float currentGradient = p_gradients[idx];
+    currentGradient += p_weightDecayRate * p_parameters[idx];
 
-    float current_gradient = grads[gid];
-    current_gradient += weight_decay_rate * params[gid];
+    float m_t = p_beta1 * p_m[idx] + (1.0f - p_beta1) * currentGradient;
+    float v_t = p_beta2 * p_v[idx] + (1.0f - p_beta2) * currentGradient * currentGradient;
+    
+    p_m[idx] = m_t;
+    p_v[idx] = v_t;
 
-    m[gid] = beta1 * m[gid] + (1.0f - beta1) * current_gradient;
+    float m_hat = m_t / (1.0f - p_beta1PowT);
+    float v_hat = v_t / (1.0f - p_beta2PowT);
 
-    v[gid] = beta2 * v[gid] + (1.0f - beta2) * current_gradient * current_gradient;
-
-    params[gid] -= (learning_rate * (m[gid] / (1.0f - beta1_pow_t))) / (sqrt((v[gid] / (1.0f - beta2_pow_t))) + epsilon);
+    p_parameters[idx] -= (p_learningRate * m_hat) / (sqrt(v_hat) + p_epsilon);
 }

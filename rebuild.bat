@@ -4,6 +4,9 @@ setlocal
 if exist build (
     rmdir /s /q build
 )
+if exist OpenCLNeuralNetwork.exe (
+    del OpenCLNeuralNetwork.exe
+)
 mkdir build
 cd build
 
