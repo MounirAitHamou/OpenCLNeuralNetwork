@@ -71,7 +71,13 @@ target_link_libraries(OpenCLNeuralNetwork PRIVATE
 add_custom_command(
     TARGET OpenCLNeuralNetwork POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy
-    "${CLBLAST_DIR}/build/Release/clblast.dll"
-    $<TARGET_FILE_DIR:OpenCLNeuralNetwork>
-    COMMENT "Copying clblast.dll to the executable directory"
+        "${CLBLAST_DIR}/build/Release/clblast.dll"
+        $<TARGET_FILE_DIR:OpenCLNeuralNetwork>
+    COMMAND ${CMAKE_COMMAND} -E copy
+        "${HDF5_ROOT}/bin/hdf5_cpp.dll"
+        $<TARGET_FILE_DIR:OpenCLNeuralNetwork>
+    COMMAND ${CMAKE_COMMAND} -E copy
+        "${HDF5_ROOT}/bin/hdf5.dll"
+        $<TARGET_FILE_DIR:OpenCLNeuralNetwork>
+    COMMENT "Copying required DLLs (CLBlast + HDF5) to the executable directory"
 )
