@@ -25,7 +25,7 @@ int XORTest(std::shared_ptr<Utils::SharedResources> p_sharedResources, NeuralNet
 }
 
 int makeXORModel(Utils::OpenCLResources oclResources, const std::string p_fileName) {
-    size_t batchSize = 4;
+    size_t batchSize = 1;
     float learningRate = 0.001f;
     float weightDecayRate = 0.0f;
     float beta1 = 0.9f;
