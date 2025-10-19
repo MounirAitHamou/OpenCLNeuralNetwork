@@ -100,28 +100,19 @@ __kernel void convolutionalCol2im(
     const int p_outputWidth,
     __global float* p_deltasBuffer)
 {
-    const int flatSpatialChannelIndex = get_global_id(0);
-    const int batch = get_global_id(1); 
+    const int flatIndexPerImage = get_global_id(0);
+    const int batch = get_global_id(1);
 
-    if (flatSpatialChannelIndex >= (p_inputHeight * p_inputWidth * p_inputChannels) || 
-        batch >= get_global_size(1)) return;
-
-    const int elementsPerHeightSlice = p_inputWidth * p_inputChannels;
-    const int elementsPerWidthSlice = p_inputChannels;
-
-    const int inputC = flatSpatialChannelIndex % elementsPerWidthSlice;
-    const int w_h_index = flatSpatialChannelIndex / elementsPerWidthSlice;
-    const int inputX = w_h_index % p_inputWidth;
-    const int inputY = w_h_index / p_inputWidth;
-
-    const int batchSize = get_global_size(1); 
+    const int spatialSize = p_inputHeight * p_inputWidth;
     
-    const int elementsPerSample = p_inputHeight * p_inputWidth * p_inputChannels;
+    const int inputC = flatIndexPerImage / spatialSize;
+    const int H_W_Index = flatIndexPerImage % spatialSize;
+    const int inputY = H_W_Index / p_inputWidth;
+    const int inputX = H_W_Index % p_inputWidth;
+    
+    const int elementsPerSample = p_inputChannels * spatialSize;
 
-    const int outputDeltaIndex = (batch * elementsPerSample) +
-                                 (inputY * elementsPerHeightSlice) +
-                                 (inputX * elementsPerWidthSlice) +
-                                 inputC;
+    const int outputDeltaIndex = (batch * elementsPerSample) + flatIndexPerImage;
 
     float sum = 0.0f;
 
@@ -143,10 +134,11 @@ __kernel void convolutionalCol2im(
                     const int im2colRow = (inputC * p_filterHeight * p_filterWidth) +
                                           (fY * p_filterWidth) + fX;
                     
-                    const int im2colCol = (batch * p_outputHeight * p_outputWidth) +
+                    const int outputElementsPerImage = p_outputHeight * p_outputWidth;
+                    const int im2colCol = (batch * outputElementsPerImage) +
                                           (outputMapY * p_outputWidth) + outputMapX;
-                    
-                    const int totalIm2colCols = batchSize * p_outputHeight * p_outputWidth;
+
+                    const int totalIm2colCols = get_global_size(1) * outputElementsPerImage;
                     
                     const int im2colIndex = im2colRow * totalIm2colCols + im2colCol;
                     
@@ -156,7 +148,7 @@ __kernel void convolutionalCol2im(
         }
     }
     
-    p_deltasBuffer[outputDeltaIndex] = sum;
+    p_deltasBuffer[outputDeltaIndex] += sum;
 }
 
 __kernel void convolutionalAverageWeightsGradientsKernel(

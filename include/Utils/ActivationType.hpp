@@ -20,4 +20,8 @@ namespace Utils {
                 throw std::invalid_argument("Invalid value for ActivationType");
         }
     }
+
+    inline bool isReluActivation(ActivationType p_type) {
+        return p_type == ActivationType::ReLU;
+    }
 }

@@ -32,8 +32,8 @@ public:
 
     Utils::LayerType getType() const override { return Utils::LayerType::Convolutional; }
 
-    size_t getWeightsSize() const { return m_filterDimensions.getTotalElements(); }
-    size_t getBiasesSize() const { return m_filterDimensions.getOutputChannels(); }
+    size_t getWeightsSize() const { return getOutputChannels() * getInputChannels() * m_filterDimensions.getHeight() * m_filterDimensions.getWidth(); }
+    size_t getBiasesSize() const { return getOutputChannels(); }
 
     void saveLayer(const cl::CommandQueue& p_forwardBackpropQueue, H5::Group& p_layerGroup) const override;
     bool equals(const cl::CommandQueue& p_queue, const Layer& p_other) const override;

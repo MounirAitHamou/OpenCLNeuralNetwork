@@ -106,5 +106,6 @@ protected:
 protected:
     void allocateLayerBuffers() {
         m_outputs    = cl::Buffer(m_sharedResources->getContext(), CL_MEM_READ_WRITE, m_batchSize * getTotalOutputElements() * sizeof(float));
+        m_deltas     = cl::Buffer(m_sharedResources->getContext(), CL_MEM_READ_WRITE, m_batchSize * getTotalOutputElements() * sizeof(float));
     }
 };

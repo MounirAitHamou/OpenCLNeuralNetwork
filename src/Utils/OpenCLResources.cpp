@@ -294,4 +294,106 @@ namespace Utils {
         }
         return true;
     }
+
+    void cpuGemm2D(const std::vector<std::vector<float>>& A,
+                   const std::vector<std::vector<float>>& B,
+                   std::vector<std::vector<float>>& C,
+                   bool transposeA,
+                   bool transposeB) {
+        size_t M = transposeA ? A[0].size() : A.size();
+        size_t K = transposeA ? A.size() : A[0].size();
+        size_t N = transposeB ? B.size() : B[0].size();
+
+        C.assign(M, std::vector<float>(N, 0.0f));
+
+        for (size_t m = 0; m < M; ++m) {
+            for (size_t n = 0; n < N; ++n) {
+                float sum = 0.0f;
+                for (size_t k = 0; k < K; ++k) {
+                    float a = transposeA ? A[k][m] : A[m][k];
+                    float b = transposeB ? B[n][k] : B[k][n];
+                    sum += a * b;
+                }
+                C[m][n] = sum;
+            }
+        }
+    }
+
+    void cpuGemv2D(const std::vector<std::vector<float>>& A,
+                   const std::vector<float>& x,
+                   std::vector<float>& y,
+                   bool transposeA) {
+        size_t M = transposeA ? A[0].size() : A.size();
+        size_t N = transposeA ? A.size() : A[0].size();
+
+        y.assign(M, 0.0f);
+
+        for (size_t m = 0; m < M; ++m) {
+            float sum = 0.0f;
+            for (size_t n = 0; n < N; ++n) {
+                float a = transposeA ? A[n][m] : A[m][n];
+                sum += a * x[n];
+            }
+            y[m] = sum;
+        }
+    }
+
+    std::vector<std::vector<float>> readBuffer2D(
+        const cl::CommandQueue& queue,
+        const cl::Buffer& buffer,
+        size_t rows,
+        size_t cols)
+    {
+        std::vector<float> flat(rows * cols);
+        cl_int err = queue.enqueueReadBuffer(buffer, CL_TRUE, 0, sizeof(float) * flat.size(), flat.data());
+        if (err != CL_SUCCESS) {
+            throw std::runtime_error("Failed to read OpenCL buffer (error code: " + std::to_string(err) + ")");
+        }
+
+        std::vector<std::vector<float>> matrix(rows, std::vector<float>(cols));
+        for (size_t i = 0; i < rows; ++i) {
+            for (size_t j = 0; j < cols; ++j) {
+                matrix[i][j] = flat[i * cols + j];
+            }
+        }
+
+        return matrix;
+    }
+
+    bool compare2D(const std::vector<std::vector<float>>& A,
+                   const std::vector<std::vector<float>>& B,
+                   float tol) {
+        for (size_t i = 0; i < A.size(); ++i)
+            for (size_t j = 0; j < A[0].size(); ++j)
+                if (std::fabs(A[i][j] - B[i][j]) > tol) {
+                    std::cerr << "Mismatch at (" << i << "," << j << "): "
+                            << "CPU=" << A[i][j] << ", GPU=" << B[i][j] << std::endl;
+                    return false;
+                }
+        return true;
+    }
+
+    std::vector<float> readBuffer1D(
+        const cl::CommandQueue& queue,
+        const cl::Buffer& buffer,
+        size_t size) {
+        std::vector<float> data(size);
+        cl_int err = queue.enqueueReadBuffer(buffer, CL_TRUE, 0, sizeof(float) * size, data.data());
+        if (err != CL_SUCCESS) {
+            throw std::runtime_error("Failed to read OpenCL buffer (error code: " + std::to_string(err) + ")");
+        }
+        return data;
+    }
+
+    bool compare1D(const std::vector<float>& A,
+                   const std::vector<float>& B,
+                   float tol) {
+        for (size_t i = 0; i < A.size(); ++i)
+            if (std::fabs(A[i] - B[i]) > tol) {
+                std::cerr << "Mismatch at index " << i << ": "
+                          << "CPU=" << A[i] << ", GPU=" << B[i] << std::endl;
+                return false;
+            }
+        return true;
+    }
 }

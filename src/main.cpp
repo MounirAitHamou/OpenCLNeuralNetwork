@@ -26,7 +26,7 @@ int XORTest(std::shared_ptr<Utils::SharedResources> p_sharedResources, NeuralNet
 
 int makeXORModel(Utils::OpenCLResources oclResources, const std::string p_fileName) {
     size_t batchSize = 4;
-    float learningRate = 0.01f;
+    float learningRate = 0.001f;
     float weightDecayRate = 0.0f;
     float beta1 = 0.9f;
     float beta2 = 0.999f;
@@ -63,11 +63,21 @@ int makeXORModel(Utils::OpenCLResources oclResources, const std::string p_fileNa
             lossFunctionType
         ), seed);
 
-        net.addDense(flatInputSize, Utils::ActivationType::Linear)
-           .addDense(3, Utils::ActivationType::Tanh)
-           .addDense(4, Utils::ActivationType::ReLU)
+        net.addDense(32, Utils::ActivationType::Tanh)
+            .addConvolutional(Utils::FilterDimensions(1,1,32,24),
+                                Utils::StrideDimensions(1,1),
+                                Utils::PaddingType::Same,
+                                Utils::ActivationType::ReLU)
+            .addConvolutional(Utils::FilterDimensions(1,1,24,16),
+                                Utils::StrideDimensions(1,1),
+                                Utils::PaddingType::Same,
+                                Utils::ActivationType::ReLU)
+            .addConvolutional(Utils::FilterDimensions(1,1,16,8),
+                                Utils::StrideDimensions(1,1),
+                                Utils::PaddingType::Same,
+                                Utils::ActivationType::ReLU)
+            .addDense(16, Utils::ActivationType::Tanh)
            .addDense(flatOutputSize, Utils::ActivationType::Sigmoid);
-
         
         net.train(
             csvLoader,

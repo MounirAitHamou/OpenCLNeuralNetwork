@@ -311,8 +311,6 @@ void DenseLayer::print(const cl::CommandQueue& p_forwardBackpropQueue) const {
 
 void DenseLayer::allocateDenseLayerBuffers() {
     m_weightsGradients = cl::Buffer(m_sharedResources->getContext(), CL_MEM_READ_WRITE, getWeightsSize() * sizeof(float));
-
-    m_deltas           = cl::Buffer(m_sharedResources->getContext(), CL_MEM_READ_WRITE, m_batchSize * getTotalOutputElements() * sizeof(float));
     
     m_biasesGradients  = cl::Buffer(m_sharedResources->getContext(), CL_MEM_READ_WRITE, getBiasesSize() * sizeof(float));
     
@@ -339,13 +337,22 @@ void DenseLayer::initializeWeightsAndBiases(std::mt19937& p_rng) {
     std::vector<float> h_weights(getWeightsSize());
     std::vector<float> h_biases(getBiasesSize());
 
-    float limit = std::sqrt(6.0f / (float)(getTotalInputElements() + getTotalOutputElements()));
+    float fanIn = (float)getTotalInputElements();
+    float fanOut = (float)getTotalOutputElements();
+    float limit;
+
+    if (Utils::isReluActivation(m_activationType)) {
+        limit = std::sqrt(6.0f / fanIn);
+    } else {
+        limit = std::sqrt(6.0f / (fanIn + fanOut));
+    }
 
     for (auto& weight : h_weights) {
         weight = getRandomValue(-limit, limit, p_rng);
     }
+    
     for (auto& bias : h_biases) {
-        bias = getRandomValue(-0.5f, 0.5f, p_rng);
+        bias = 0.0f;
     }
 
     m_weights = cl::Buffer(m_sharedResources->getContext(), CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, h_weights.size() * sizeof(float), h_weights.data());

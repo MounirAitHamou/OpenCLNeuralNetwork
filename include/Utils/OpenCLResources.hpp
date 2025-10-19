@@ -122,4 +122,36 @@ namespace Utils {
     cl::Buffer createCLBuffer(const cl::Context& p_context, std::vector<float>& p_data);
 
     bool compareCLBuffers(const cl::CommandQueue& p_queue, const cl::Buffer& p_buffer1, const cl::Buffer& p_buffer2, size_t p_size, float p_epsilon = 1e-6f);
+
+    void cpuGemm2D(const std::vector<std::vector<float>>& A,
+                   const std::vector<std::vector<float>>& B,
+                   std::vector<std::vector<float>>& C,
+                   bool transposeA = false,
+                   bool transposeB = false);
+    
+    void cpuGemv2D(const std::vector<std::vector<float>>& A,
+                   const std::vector<float>& x,
+                   std::vector<float>& y,
+                   bool transposeA = false);
+
+    std::vector<std::vector<float>> readBuffer2D(
+        const cl::CommandQueue& queue,
+        const cl::Buffer& buffer,
+        size_t rows,
+        size_t cols);
+
+    std::vector<float> readBuffer1D(
+        const cl::CommandQueue& queue,
+        const cl::Buffer& buffer,
+        size_t size);
+
+    bool compare2D(const std::vector<std::vector<float>>& A,
+                   const std::vector<std::vector<float>>& B,
+                   float tol = 1e-4f);
+
+    bool compare1D(const std::vector<float>& A,
+                   const std::vector<float>& B,
+                   float tol = 1e-4f);
+
+
 }

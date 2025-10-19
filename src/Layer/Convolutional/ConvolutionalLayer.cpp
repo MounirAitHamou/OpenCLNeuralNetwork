@@ -250,6 +250,14 @@ void ConvolutionalLayer::backpropDeltas(const cl::CommandQueue& p_forwardBackpro
         std::cerr << "Backprop Delta CLBlast GEMM failed: " << static_cast<int>(status) << std::endl;
         throw std::runtime_error("CLBlast GEMM failed");
     }
+
+
+    p_forwardBackpropQueue.enqueueFillBuffer(
+        p_previousLayerDeltas,
+        0,
+        0,
+        p_previousLayerOutputDimensions.getTotalElements() * m_batchSize * sizeof(float)
+    );
     
     m_col2imKernel.setArg(12, p_previousLayerDeltas);
 
@@ -414,7 +422,7 @@ void ConvolutionalLayer::print(const cl::CommandQueue& p_forwardBackpropQueue) c
     Utils::printCLBuffer(p_forwardBackpropQueue, m_biases, getBiasesSize(), "Biases");
     Utils::printCLBuffer(p_forwardBackpropQueue, m_preActivations, m_batchSize * getTotalOutputElements(), "Pre-Activations");
     Utils::printCLBuffer(p_forwardBackpropQueue, m_outputs, m_batchSize * getTotalOutputElements(), "Outputs");
-    Utils::printCLBuffer(p_forwardBackpropQueue, m_deltas, m_batchSize * m_inputDimensions.getTotalElements(), "Deltas");
+    Utils::printCLBuffer(p_forwardBackpropQueue, m_deltas, m_batchSize * getTotalOutputElements(), "Deltas");
     Utils::printCLBuffer(p_forwardBackpropQueue, m_weightsGradients, getWeightsSize(), "Weight Gradients");
     Utils::printCLBuffer(p_forwardBackpropQueue, m_biasesGradients, getBiasesSize(), "Bias Gradients");
     std::cout << "-------------------------------------\n";
@@ -431,22 +439,16 @@ void ConvolutionalLayer::allocateConvolutionalLayerBuffers() {
         (getOutputChannels()) * im2colBatchCols * sizeof(float)
     );
 
-    m_deltas = cl::Buffer(
-        m_sharedResources->getContext(), 
-        CL_MEM_READ_WRITE, 
-        (getOutputChannels()) * im2colBatchCols * sizeof(float)
-    );
-
     m_weightsGradients = cl::Buffer(
         m_sharedResources->getContext(), 
         CL_MEM_READ_WRITE, 
-        (getOutputChannels()) * im2colRows * sizeof(float)
+        (getWeightsSize()) * sizeof(float)
     );
     
     m_biasesGradients = cl::Buffer(
         m_sharedResources->getContext(), 
         CL_MEM_READ_WRITE, 
-        (getOutputChannels()) * sizeof(float)
+        (getBiasesSize()) * sizeof(float)
     );
     
     m_im2colBuffer = cl::Buffer(
@@ -493,50 +495,100 @@ Utils::Dimensions ConvolutionalLayer::calculateOutputDimensions(const Utils::Dim
     size_t padBottom      = paddingValues.getBottom();
     size_t padRight       = paddingValues.getRight();
 
-    size_t outputHeight   = static_cast<size_t>(floor((static_cast<double>(inputHeight - filterHeight) + padTop + padBottom) / static_cast<double>(strideHeight)) + 1);
+    long numeratorHeight = static_cast<long>(inputHeight - filterHeight + padTop + padBottom);
+    long numeratorWidth  = static_cast<long>(inputWidth - filterWidth + padLeft + padRight);
 
-    size_t outputWidth    = static_cast<size_t>(floor((static_cast<double>(inputWidth - filterWidth) + padLeft + padRight) / static_cast<double>(strideWidth)) + 1);
+    size_t outputHeight = static_cast<size_t>(
+        floor(static_cast<double>(numeratorHeight) / static_cast<double>(strideHeight)) + 1
+    );
+    
+    size_t outputWidth = static_cast<size_t>(
+        floor(static_cast<double>(numeratorWidth) / static_cast<double>(strideWidth)) + 1
+    );
+    
+    if (outputHeight == 0 || outputWidth == 0) {
+        std::cerr << "Error: Calculated output dimensions are invalid (zero)." << std::endl;
+        throw std::runtime_error("Calculated output dimensions are invalid (zero). Check filter, stride, and padding settings.");
+    }
+
     size_t outputChannels = p_filterDimensions.getOutputChannels();
     return Utils::Dimensions({ outputChannels, outputHeight, outputWidth });
 }
 
 Utils::Dimensions ConvolutionalLayer::calculateOutputDimensions() const {
-    size_t inputHeight    = getInputHeight();
-    size_t inputWidth     = getInputWidth();
-    size_t filterHeight   = m_filterDimensions.getHeight();
-    size_t filterWidth    = m_filterDimensions.getWidth();
-    size_t strideHeight   = m_strideDimensions.getHeight();
-    size_t strideWidth    = m_strideDimensions.getWidth();
-    size_t padTop         = m_paddingValues.getTop();
-    size_t padLeft        = m_paddingValues.getLeft();
-    size_t padBottom      = m_paddingValues.getBottom();
-    size_t padRight       = m_paddingValues.getRight();
+    long inputHeight  = static_cast<long>(getInputHeight());
+    long inputWidth   = static_cast<long>(getInputWidth());
+    long filterHeight = static_cast<long>(m_filterDimensions.getHeight());
+    long filterWidth  = static_cast<long>(m_filterDimensions.getWidth());
+    long strideHeight = static_cast<long>(m_strideDimensions.getHeight());
+    long strideWidth  = static_cast<long>(m_strideDimensions.getWidth());
+    long padTop       = static_cast<long>(m_paddingValues.getTop());
+    long padLeft      = static_cast<long>(m_paddingValues.getLeft());
+    long padBottom    = static_cast<long>(m_paddingValues.getBottom());
+    long padRight     = static_cast<long>(m_paddingValues.getRight());
 
-    size_t outputHeight   = static_cast<size_t>(floor((static_cast<double>(inputHeight - filterHeight) + padTop + padBottom) / static_cast<double>(strideHeight)) + 1);
-    size_t outputWidth    = static_cast<size_t>(floor((static_cast<double>(inputWidth - filterWidth) + padLeft + padRight) / static_cast<double>(strideWidth)) + 1);
+    long numeratorHeight = inputHeight - filterHeight + padTop + padBottom;
+    long numeratorWidth  = inputWidth - filterWidth + padLeft + padRight;
+
+    size_t outputHeight = static_cast<size_t>(
+        floor(static_cast<double>(numeratorHeight) / static_cast<double>(strideHeight)) + 1
+    );
+    
+    size_t outputWidth = static_cast<size_t>(
+        floor(static_cast<double>(numeratorWidth) / static_cast<double>(strideWidth)) + 1
+    );
+    
+    if (outputHeight == 0 || outputWidth == 0) {
+        std::cerr << "Error: Calculated output dimensions are invalid (zero)." << std::endl;
+        throw std::runtime_error("Calculated output dimensions are invalid (zero). Check filter, stride, and padding settings.");
+    }
+
     size_t outputChannels = m_filterDimensions.getOutputChannels();
     return Utils::Dimensions({ outputChannels, outputHeight, outputWidth });
 }
 
-Utils::PaddingValues ConvolutionalLayer::calculatePaddingValues(const Utils::Dimensions& p_inputDimensions, const Utils::FilterDimensions& p_filterDimensions, const Utils::StrideDimensions& p_strideDimensions, const Utils::PaddingType p_paddingType) const {
+Utils::PaddingValues ConvolutionalLayer::calculatePaddingValues(
+    const Utils::Dimensions& p_inputDimensions, 
+    const Utils::FilterDimensions& p_filterDimensions, 
+    const Utils::StrideDimensions& p_strideDimensions, 
+    const Utils::PaddingType p_paddingType) const 
+{
+    size_t inputHeight = p_inputDimensions.getDimensions()[1]; 
+    size_t inputWidth  = p_inputDimensions.getDimensions()[2]; 
+    
     switch (p_paddingType) {
         case Utils::PaddingType::Valid: {
             return Utils::PaddingValues(0, 0, 0, 0);
         }
         case Utils::PaddingType::Same: {
-            size_t outputHeight       = (p_inputDimensions.getDimensions()[1] + p_strideDimensions.getHeight() - 1) / p_strideDimensions.getHeight();
-            size_t outputWidth        = (p_inputDimensions.getDimensions()[2] + p_strideDimensions.getWidth() - 1) / p_strideDimensions.getWidth();
+            long long inputH_l = static_cast<long long>(inputHeight);
+            long long inputW_l = static_cast<long long>(inputWidth);
+            long long filterH_l = static_cast<long long>(p_filterDimensions.getHeight());
+            long long filterW_l = static_cast<long long>(p_filterDimensions.getWidth());
+            long long strideH_l = static_cast<long long>(p_strideDimensions.getHeight());
+            long long strideW_l = static_cast<long long>(p_strideDimensions.getWidth());
 
+            long long outputHeight = (inputH_l + strideH_l - 1) / strideH_l;
+            long long outputWidth  = (inputW_l + strideW_l - 1) / strideW_l;
 
-            size_t totalPaddingHeight = (outputHeight - 1) * p_strideDimensions.getHeight() + p_filterDimensions.getHeight() - p_inputDimensions.getDimensions()[1];
-            size_t totalPaddingWidth  = (outputWidth - 1) * p_strideDimensions.getWidth() + p_filterDimensions.getWidth() - p_inputDimensions.getDimensions()[2];
+            long long totalPaddingHeight_l = (outputHeight - 1) * strideH_l + filterH_l - inputH_l;
+            long long totalPaddingWidth_l  = (outputWidth - 1) * strideW_l + filterW_l - inputW_l;
 
-            size_t padTop             = totalPaddingHeight / 2;
-            size_t padBottom          = totalPaddingHeight - padTop;
-            size_t padLeft            = totalPaddingWidth / 2;
-            size_t padRight           = totalPaddingWidth - padLeft;
-            return Utils::PaddingValues(padTop, padBottom, padLeft, padRight);
+            if (totalPaddingHeight_l < 0 || totalPaddingWidth_l < 0) {
+                std::cerr << "Error: Invalid convolution configuration. Same padding is insufficient." << std::endl;
+                std::cerr << "Required Padding H: " << totalPaddingHeight_l << ", W: " << totalPaddingWidth_l << std::endl;
+                throw std::invalid_argument("Input dimensions are too small for filter/stride combination, even with 'Same' padding.");
+            }
+
+            size_t totalPaddingHeight = static_cast<size_t>(totalPaddingHeight_l);
+            size_t totalPaddingWidth  = static_cast<size_t>(totalPaddingWidth_l);
             
+            size_t padTop    = totalPaddingHeight / 2;
+            size_t padBottom = totalPaddingHeight - padTop;
+            size_t padLeft   = totalPaddingWidth / 2;
+            size_t padRight  = totalPaddingWidth - padLeft;
+            
+            return Utils::PaddingValues(padTop, padBottom, padLeft, padRight);
         }
         default: {
             std::cerr << "Warning: Unsupported padding type. Setting padding to zero." << std::endl;
@@ -551,14 +603,20 @@ void ConvolutionalLayer::initializeWeightsAndBiases(std::mt19937& p_rng) {
 
     float fanIn = (float)getInputChannels() * m_filterDimensions.getHeight() * m_filterDimensions.getWidth();
     float fanOut = (float)getOutputChannels() * m_filterDimensions.getHeight() * m_filterDimensions.getWidth();
-    float limit = std::sqrt(6.0f / (fanIn + fanOut));
+    float limit;
+    if (Utils::isReluActivation(m_activationType)) {
+        limit = std::sqrt(6.0f / fanIn);
+        
+    } else {
+        limit = std::sqrt(6.0f / (fanIn + fanOut));
+    }
     
     for (auto& weight : h_weights) {
         weight = getRandomValue(-limit, limit, p_rng);
     }
     
     for (auto& bias : h_biases) {
-        bias = getRandomValue(0.0f, 0.0f, p_rng);
+        bias = 0.0f;
     }
     
     m_weights = cl::Buffer(
@@ -645,33 +703,38 @@ void ConvolutionalLayer::setupKernels() {
     m_convAverageBiasesGradientsKernel.setArg(0, m_biasesGradients);
 }
 
-Utils::Dimensions ConvolutionalLayer::validateInputDimensions(const Utils::Dimensions& p_inputDimensions, const Utils::FilterDimensions& p_filterDimensions, const Utils::StrideDimensions& p_strideDimensions) const {
-    Utils::Dimensions validDimensions(p_inputDimensions.getDimensions());
-    if (p_inputDimensions.getDimensions().size() == 1){
-        validDimensions = Utils::Dimensions({p_inputDimensions.getDimensions()[0], 1, 1});
-    }
+Utils::Dimensions ConvolutionalLayer::validateInputDimensions(
+    const Utils::Dimensions& p_inputDimensions, 
+    const Utils::FilterDimensions& p_filterDimensions, 
+    const Utils::StrideDimensions& p_strideDimensions) const 
+{
+    std::vector<size_t> dims = p_inputDimensions.getDimensions();
+    size_t initial_dims = dims.size();
+    Utils::Dimensions validDimensions;
 
-    if (p_filterDimensions.getInputChannels() != validDimensions.getDimensions()[0]) {
-        std::cerr << "Error: Input channels of filter dimensions (" << p_filterDimensions.getInputChannels() 
-                  << ") do not match the channels of input dimensions (" << validDimensions.getDimensions()[0] << ")." << std::endl;
-        throw std::invalid_argument("Input channels of filter dimensions must match the channels of input dimensions.");
-    }
-
-    if (validDimensions.getDimensions().size() != 3) {
-        std::cerr << "Error: Input dimensions must be 1D, 2D, or 3D (channels, height, width)." << std::endl;
-        throw std::invalid_argument("Input dimensions must be 1D, 2D, or 3D (channels, height, width).");
-    }
-
-    if (validDimensions.getDimensions()[1] < p_filterDimensions.getHeight() || 
-        validDimensions.getDimensions()[2] < p_filterDimensions.getWidth()) {
-        std::cerr << "Error: Filter dimensions ("
-                  << p_filterDimensions.getHeight() << "x" << p_filterDimensions.getWidth() 
-                  << ") exceed input dimensions (" 
-                  << validDimensions.getDimensions()[1] << "x" << validDimensions.getDimensions()[2] << ")." 
-                  << std::endl;
-         throw std::invalid_argument("Filter dimensions must not exceed input dimensions.");
+    if (initial_dims == 1) {
+        validDimensions = Utils::Dimensions({dims[0], 1, 1});
+    } else if (initial_dims == 2) {
+        validDimensions = Utils::Dimensions({dims[0], dims[1], 1});
+    } else if (initial_dims == 3) {
+        validDimensions = p_inputDimensions;
+    } else {
+        std::cerr << "Error: Input dimensions must be 1D, 2D, or 3D (Channels, Height, Width)." << std::endl;
+        throw std::invalid_argument("Input dimensions must be 1D, 2D, or 3D.");
     }
     
+    if (p_filterDimensions.getInputChannels() != validDimensions.getDimensions()[0]) {
+        std::cerr << "Error: Filter's input channels (" << p_filterDimensions.getInputChannels() 
+                  << ") do not match the input volume's channels (" << validDimensions.getDimensions()[0] << ")." << std::endl;
+        throw std::invalid_argument("Input channels of filter dimensions must match the channels of input dimensions.");
+    }
+    
+    if (p_filterDimensions.getHeight() <= 0 || p_filterDimensions.getWidth() <= 0) {
+        std::cerr << "Error: Filter dimensions (" << p_filterDimensions.getHeight() << "x" << p_filterDimensions.getWidth() 
+                  << ") must be strictly positive integers (> 0)." << std::endl;
+        throw std::invalid_argument("Filter dimensions must be strictly positive.");
+    }
+
     if (p_strideDimensions.getHeight() <= 0 || p_strideDimensions.getWidth() <= 0) {
         std::cerr << "Error: Stride dimensions (" 
                   << p_strideDimensions.getHeight() << "x" << p_strideDimensions.getWidth()
