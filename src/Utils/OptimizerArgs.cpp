@@ -2,18 +2,18 @@
 
 namespace Utils {
 
-    SGDOptimizerArgs makeSGDArgs(float p_learningRate, float p_weightDecayRate) {
-        return SGDOptimizerArgs(p_learningRate, p_weightDecayRate);
+    std::unique_ptr<OptimizerArgs> makeSGDArgs(float p_learningRate, float p_weightDecayRate) {
+        return std::make_unique<SGDOptimizerArgs>(p_learningRate, p_weightDecayRate);
     }
 
-    AdamOptimizerArgs makeAdamArgs(float p_learningRate, float p_weightDecayRate,
+    std::unique_ptr<OptimizerArgs> makeAdamArgs(float p_learningRate, float p_weightDecayRate,
                                                float p_beta1, float p_beta2, float p_epsilon) {
-        return AdamOptimizerArgs(p_learningRate, p_weightDecayRate, p_beta1, p_beta2, p_epsilon);
+        return std::make_unique<AdamOptimizerArgs>(p_learningRate, p_weightDecayRate, p_beta1, p_beta2, p_epsilon);
     }
 
-     AdamWOptimizerArgs makeAdamWArgs(float p_learningRate, float p_weightDecayRate,
+     std::unique_ptr<OptimizerArgs> makeAdamWArgs(float p_learningRate, float p_weightDecayRate,
                                                float p_beta1, float p_beta2, float p_epsilon) {
-        return AdamWOptimizerArgs(p_learningRate, p_weightDecayRate, p_beta1, p_beta2, p_epsilon);
+        return std::make_unique<AdamWOptimizerArgs>(p_learningRate, p_weightDecayRate, p_beta1, p_beta2, p_epsilon);
     }
 
     std::unique_ptr<Optimizer> loadOptimizer(std::shared_ptr<Utils::SharedResources> p_oclResources,

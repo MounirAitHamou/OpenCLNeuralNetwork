@@ -46,28 +46,24 @@ auto optimizerArgs = Utils::makeAdamWArgs(
 🏗️ Customizing Layers and Network Architecture
 The network architecture is defined by specifying layers using LayerArgs:
 
-Adding Hidden Layers
+Adding Layers:
 ```cpp
-    std::vector<std::unique_ptr<LayerConfig::LayerArgs>> hidden_layers;
-    hidden_layers.push_back(LayerConfig::makeDenseLayerArgs(
-        Dimensions({4}), ActivationType::Tanh));  // Example hidden layer with 4 neurons and Tanh activation
+    std::vector<std::unique_ptr<LayerConfig::LayerArgs>> layers;
+    layers.push_back(LayerConfig::makeDenseLayerArgs(
+        Dimensions({4}));  // First hidden layer example
  
 
-    hidden_layers.push_back(LayerConfig::makeDenseLayerArgs(
+    layers.push_back(LayerConfig::makeDenseLayerArgs(
         Dimensions({6}), ActivationType::ReLU));  // Second hidden layer example
 ```
 
-Setting the Output Layer
-```cpp
-    std::unique_ptr<LayerConfig::LayerArgs> output_layer =
-        LayerConfig::makeDenseLayerArgs(
-            Dimensions({1}), ActivationType::Sigmoid);  // Output layer with 1 neuron and Sigmoid activation
-```
 
 Adding Layers to the Network after initialization
 ```cpp
-    net.addDense(1, ActivationType::Sigmoid);  // Add output layer
-    net.addConvolutional(Utils::FilterDimensions(1, 1, 3, 8), Utils::StrideDimensions(1, 1), Utils::PaddingType::Same, Utils::ActivationType::ReLU);
+    net.addDense(3);
+    net.addReLU();
+    net.addConvolutional(Utils::FilterDimensions(1, 1, 3, 8), Utils::StrideDimensions(1, 1), Utils::PaddingType::Same);
+    net.addSoftmax();
 ```
 
 💾 Saving and Loading a Network
@@ -96,17 +92,6 @@ You can save the trained network to a file and load it later using HDF5 format:
         epochs,
         lossReporting
     );
-```
-
-Supported Activation Functions:
-```cpp
-ActivationType::Linear
-
-ActivationType::Sigmoid
-
-ActivationType::Tanh
-
-ActivationType::ReLU
 ```
 
 Supported Loss Functions:

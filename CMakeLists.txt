@@ -23,20 +23,25 @@ set(CLBLAST_LIBRARY_PATH "${CLBLAST_DIR}/build/Release/clblast.lib")
 get_filename_component(CLBLAST_LIBRARY_DIR "${CLBLAST_LIBRARY_PATH}" DIRECTORY)
 
 add_executable(OpenCLNeuralNetwork
-    src/main.cpp
-    src/Layer/Dense/DenseLayer.cpp
-    src/Layer/Convolutional/ConvolutionalLayer.cpp
+    src/DataLoaders/CSVNumerical/CSVNumericalLoader.cpp
+    src/DataLoaders/DataLoader.cpp
+    src/Layers/ActivationLayers/PreActivationLayers/LeakyReLU/LeakyReLULayer.cpp
+    src/Layers/ActivationLayers/PreActivationLayers/ReLU/ReLULayer.cpp
+    src/Layers/ActivationLayers/Sigmoid/SigmoidLayer.cpp
+    src/Layers/ActivationLayers/Softmax/SoftmaxLayer.cpp
+    src/Layers/ActivationLayers/Tanh/TanhLayer.cpp
+    src/Layers/TrainableLayers/Convolutional/ConvolutionalLayer.cpp
+    src/Layers/TrainableLayers/Dense/DenseLayer.cpp
     src/NeuralNetwork/NeuralNetwork.cpp
-    src/Utils/OpenCLResources.cpp
-    src/Optimizer/SGD/SGDOptimizer.cpp
-    src/Optimizer/Adam/AdamOptimizer.cpp
-    src/Optimizer/AdamW/AdamWOptimizer.cpp
-    src/Utils/LayerArgs.cpp
-    src/Utils/OptimizerArgs.cpp
-    src/Utils/NetworkArgs.cpp
-    src/DataLoader/DataLoader.cpp
-    src/DataLoader/CSVNumerical/CSVNumericalLoader.cpp
+    src/Optimizers/AdamBaseOptimizers/Adam/AdamOptimizer.cpp
+    src/Optimizers/AdamBaseOptimizers/AdamW/AdamWOptimizer.cpp
+    src/Optimizers/SGD/SGDOptimizer.cpp
     src/Utils/EventProfiler.cpp
+    src/Utils/LayerArgs.cpp
+    src/Utils/NetworkArgs.cpp
+    src/Utils/OpenCLResources.cpp
+    src/Utils/OptimizerArgs.cpp
+    src/main.cpp
 )
 
 target_include_directories(OpenCLNeuralNetwork PRIVATE

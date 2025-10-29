@@ -1,49 +1,10 @@
 #ifndef HELPER_FUNCTIONS_CLH
 #define HELPER_FUNCTIONS_CLH
 
-#define ACT_LINEAR    0
-#define ACT_RELU      1
-#define ACT_SIGMOID   2
-#define ACT_TANH      3
-
 #define LOSS_MSE      0
 #define LOSS_BCE      1
 
 #define LOG_SAFE_VALUE 1e-9f
-
-float applyActivation(float p_val, unsigned int p_activationType) {
-    switch (p_activationType) {
-        case ACT_LINEAR:
-            return p_val;
-        case ACT_RELU:
-            return fmax(0.0f, p_val);
-        case ACT_SIGMOID:
-            return 1.0f / (1.0f + exp(-p_val));
-        case ACT_TANH:
-            return tanh(p_val);
-        default:
-            return p_val;
-    }
-}
-
-float applyActivationDerivative(float p_val, unsigned int p_activationType) {
-    switch (p_activationType) {
-        case ACT_LINEAR:
-            return 1.0f;
-        case ACT_RELU:
-            return (p_val > 0.0f) ? 1.0f : 0.0f;
-        case ACT_SIGMOID: {
-            float sigmoid_val = 1.0f / (1.0f + exp(-p_val));
-            return sigmoid_val * (1.0f - sigmoid_val);
-        }
-        case ACT_TANH: {
-            float tanh_val = tanh(p_val);
-            return 1.0f - tanh_val * tanh_val;
-        }
-        default:
-            return 1.0f;
-    }
-}
 
 float computeLossDerivative(float p_pred, float p_target, unsigned int p_lossType) {
     switch (p_lossType) {

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stdexcept>
+#include <string>
 namespace Utils {
     enum class OptimizerType : unsigned int {
         SGD = 0,
@@ -15,6 +16,16 @@ namespace Utils {
             case 2: return OptimizerType::AdamW;
             default:
                 throw std::invalid_argument("Invalid value for OptimizerType");
+        }
+    }
+
+    inline std::string optimizerTypeToString(OptimizerType p_type) {
+        switch(p_type) {
+            case OptimizerType::SGD: return "SGD";
+            case OptimizerType::Adam: return "Adam";
+            case OptimizerType::AdamW: return "AdamW";
+            default:
+                return "Unknown";
         }
     }
 }

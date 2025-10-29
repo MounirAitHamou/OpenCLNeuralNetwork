@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Optimizer/AllOptimizers.hpp"
+#include "Optimizers/AllOptimizers.hpp"
 #include "Utils/OpenCLResources.hpp"
 #include <memory>
 #include <iostream>
@@ -22,8 +22,6 @@ namespace Utils {
 
         virtual void print() const = 0;
 
-        virtual std::unique_ptr<OptimizerArgs> clone() const = 0;
-
         const float getLearningRate() const {
             return m_learningRate;
         }
@@ -38,122 +36,89 @@ namespace Utils {
         SGDOptimizerArgs(float p_learningRate = 0.01f, float p_weightDecayRate = 0.0f)
             : OptimizerArgs(p_learningRate, p_weightDecayRate) {}
 
-        std::unique_ptr<Optimizer> createOptimizer(std::shared_ptr<SharedResources> p_sharedResources) const override {
+        std::unique_ptr<Optimizer> createOptimizer(std::shared_ptr<SharedResources> p_sharedResources) const final override {
             return std::make_unique<SGDOptimizer>(p_sharedResources, m_learningRate, m_weightDecayRate);
         }
 
-        OptimizerType getOptimizerType() const override {
+        OptimizerType getOptimizerType() const final override {
             return OptimizerType::SGD;
         }
 
-        void print() const override {
+        void print() const final override {
             std::cout << "SGD Optimizer Arguments:\n"
                     << "Learning Rate: " << m_learningRate << "\n"
                     << "Weight Decay Rate: " << m_weightDecayRate << "\n";
         }
-
-        std::unique_ptr<OptimizerArgs> clone() const override {
-            return std::make_unique<SGDOptimizerArgs>(*this);
-        }
     };
 
-    struct AdamOptimizerArgs : public OptimizerArgs {
-    private:
+    struct AdamBaseOptimizerArgs : public OptimizerArgs {
+    protected:
         float m_beta1;
         float m_beta2;
         float m_epsilon;
-    
+    public:
+        AdamBaseOptimizerArgs(float p_learningRate = 0.01f, float p_weightDecayRate = 0.0f,
+                                float p_beta1 = 0.9f, float p_beta2 = 0.999f, float p_epsilon = 1e-8f)
+            : OptimizerArgs(p_learningRate, p_weightDecayRate), m_beta1(p_beta1), m_beta2(p_beta2), m_epsilon(p_epsilon) {}
+        
+        const float getBeta1() const {
+            return m_beta1;
+        }
+
+        const float getBeta2() const {
+            return m_beta2;
+        }
+
+        const float getEpsilon() const {
+            return m_epsilon;
+        }
+
+        void print() const final override {
+            std::cout << "Learning Rate: " << m_learningRate << "\n"
+                    << "Weight Decay Rate: " << m_weightDecayRate << "\n"
+                    << "Beta1: " << m_beta1 << "\n"
+                    << "Beta2: " << m_beta2 << "\n"
+                    << "Epsilon: " << m_epsilon << "\n";
+        }
+    };
+
+    struct AdamOptimizerArgs : public AdamBaseOptimizerArgs {
     public:
         AdamOptimizerArgs(float p_learningRate = 0.01f, float p_weightDecayRate = 0.0f,
                                 float p_beta1 = 0.9f, float p_beta2 = 0.999f, float p_epsilon = 1e-8f)
-            : OptimizerArgs(p_learningRate, p_weightDecayRate), m_beta1(p_beta1), m_beta2(p_beta2), m_epsilon(p_epsilon) {}
+            : AdamBaseOptimizerArgs(p_learningRate, p_weightDecayRate, p_beta1, p_beta2, p_epsilon) {}
 
-        std::unique_ptr<Optimizer> createOptimizer(std::shared_ptr<SharedResources> p_sharedResources) const override {
+        std::unique_ptr<Optimizer> createOptimizer(std::shared_ptr<SharedResources> p_sharedResources) const final override {
             return std::make_unique<AdamOptimizer>(p_sharedResources, m_learningRate, m_weightDecayRate, m_beta1, m_beta2, m_epsilon);
         }
 
-        OptimizerType getOptimizerType() const override {
+        OptimizerType getOptimizerType() const final override {
             return OptimizerType::Adam;
-        }
-
-        const float getBeta1() const {
-            return m_beta1;
-        }
-
-        const float getBeta2() const {
-            return m_beta2;
-        }
-
-        const float getEpsilon() const {
-            return m_epsilon;
-        }
-
-        void print() const override {
-            std::cout << "Adam Optimizer Arguments:\n"
-                    << "Learning Rate: " << m_learningRate << "\n"
-                    << "Weight Decay Rate: " << m_weightDecayRate << "\n"
-                    << "Beta1: " << m_beta1 << "\n"
-                    << "Beta2: " << m_beta2 << "\n"
-                    << "Epsilon: " << m_epsilon << "\n";
-        }
-
-        std::unique_ptr<OptimizerArgs> clone() const override {
-            return std::make_unique<AdamOptimizerArgs>(*this);
         }
     };
 
-    struct AdamWOptimizerArgs : public OptimizerArgs {
-    private:
-        float m_beta1;
-        float m_beta2;
-        float m_epsilon;
-    
+    struct AdamWOptimizerArgs : public AdamBaseOptimizerArgs {
     public:
         AdamWOptimizerArgs(float p_learningRate = 0.01f, float p_weightDecayRate = 0.0f,
                                 float p_beta1 = 0.9f, float p_beta2 = 0.999f, float p_epsilon = 1e-8f)
-            : OptimizerArgs(p_learningRate, p_weightDecayRate), m_beta1(p_beta1), m_beta2(p_beta2), m_epsilon(p_epsilon) {}
+            : AdamBaseOptimizerArgs(p_learningRate, p_weightDecayRate, p_beta1, p_beta2, p_epsilon) {}
 
-        std::unique_ptr<Optimizer> createOptimizer(std::shared_ptr<SharedResources> p_sharedResources) const override {
+        std::unique_ptr<Optimizer> createOptimizer(std::shared_ptr<SharedResources> p_sharedResources) const final override {
             return std::make_unique<AdamWOptimizer>(p_sharedResources, m_learningRate, m_weightDecayRate, m_beta1, m_beta2, m_epsilon);
         }
 
-        OptimizerType getOptimizerType() const override {
+        OptimizerType getOptimizerType() const final override {
             return OptimizerType::AdamW;
-        }
-
-        const float getBeta1() const {
-            return m_beta1;
-        }
-
-        const float getBeta2() const {
-            return m_beta2;
-        }
-
-        const float getEpsilon() const {
-            return m_epsilon;
-        }
-
-        void print() const override {
-            std::cout << "AdamW Optimizer Arguments:\n"
-                    << "Learning Rate: " << m_learningRate << "\n"
-                    << "Weight Decay Rate: " << m_weightDecayRate << "\n"
-                    << "Beta1: " << m_beta1 << "\n"
-                    << "Beta2: " << m_beta2 << "\n"
-                    << "Epsilon: " << m_epsilon << "\n";
-        }
-
-        std::unique_ptr<OptimizerArgs> clone() const override {
-            return std::make_unique<AdamWOptimizerArgs>(*this);
         }
     };
 
 
-    SGDOptimizerArgs makeSGDArgs(float p_learningRate = 0.01f, float p_weightDecayRate = 0.0f);
+    std::unique_ptr<OptimizerArgs> makeSGDArgs(float p_learningRate = 0.01f, float p_weightDecayRate = 0.0f);
 
-    AdamOptimizerArgs makeAdamArgs(float p_learningRate = 0.01f, float p_weightDecayRate = 0.0f,
+    std::unique_ptr<OptimizerArgs> makeAdamArgs(float p_learningRate = 0.01f, float p_weightDecayRate = 0.0f,
                                                float p_beta1 = 0.9f, float p_beta2 = 0.999f, float p_epsilon = 1e-8f);
 
-    AdamWOptimizerArgs makeAdamWArgs(float p_learningRate = 0.01f, float p_weightDecayRate = 0.0f,
+    std::unique_ptr<OptimizerArgs> makeAdamWArgs(float p_learningRate = 0.01f, float p_weightDecayRate = 0.0f,
                                                float p_beta1 = 0.9f, float p_beta2 = 0.999f, float p_epsilon = 1e-8f);
 
     std::unique_ptr<Optimizer> loadOptimizer(

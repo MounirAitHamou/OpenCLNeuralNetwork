@@ -8,13 +8,9 @@ namespace Utils {
     private:
 
         Dimensions m_initialInputDimensions;
-
         std::vector<std::unique_ptr<LayerArgs>> m_layersArguments;
-
         size_t m_batchSize;
-
         std::unique_ptr<OptimizerArgs> m_optimizerArguments;
-
         LossFunctionType m_lossFunctionType;
 
     public:
@@ -59,17 +55,9 @@ namespace Utils {
 
     NetworkArgs createNetworkArgs(
         const Dimensions& p_initialInputDimensions,
-        std::vector<std::unique_ptr<LayerArgs>> p_hiddenLayerArguments,
-        std::unique_ptr<LayerArgs> p_outputLayerArguments,
-        const OptimizerArgs& p_optimizerArguments,
-        size_t p_batchSize = 1,
-        LossFunctionType p_lossFunctionType = LossFunctionType::MeanSquaredError
-    );
-
-    NetworkArgs createNetworkArgs(
-        const Dimensions& p_initialInputDimensions,
-        const OptimizerArgs& p_optimizerArguments,
-        size_t p_batchSize = 1,
-        LossFunctionType p_lossFunctionType = LossFunctionType::MeanSquaredError
+        std::vector<std::unique_ptr<LayerArgs>> p_layerArguments,
+        std::unique_ptr<OptimizerArgs> p_optimizerArguments,
+        size_t p_batchSize,
+        LossFunctionType p_lossFunctionType
     );
 }

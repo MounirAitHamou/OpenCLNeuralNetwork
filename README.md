@@ -11,15 +11,12 @@ This project was created as a personal learning project to understand neural net
   Define any number of hidden layers, with full control over:
   - Layer types
   - Layer sizes
-  - Activation functions per layer
   - Loss function type
   - Optimizer type and configuration
   - Batch size
 
 - 🧠 **Current Components**
-  - **Layer types:** Dense, Convolutional
-    > Planned: Softmax
-  - **Activations:** Linear, Sigmoid, ReLU, Tanh
+  - **Layer types:** Dense, Convolutional, Softmax, Sigmoid, ReLU, Tanh, LeakyReLU
   - **Loss functions:** Mean Squared Error (MSE), Binary Cross Entropy (BCE)
   - **Optimizers:** Stochastic Gradient Descent (SGD), Adam, AdamW
 
@@ -53,12 +50,7 @@ The goal is to implement core neural network functionality from scratch while ga
 ## 🛣️ Roadmap
 
 Planned features include:
-- Input data loaders
-- CLI/demo interfaces
-- More layers, loss functions, optimizers, and activation functions
-- (Possible) Python bindings
-- (Possible) Automated differentiation support
-
+- 📈 Additional layer types (e.g., Dropout, Batch Normalization)
 ---
 
 ## 📂 Documentation

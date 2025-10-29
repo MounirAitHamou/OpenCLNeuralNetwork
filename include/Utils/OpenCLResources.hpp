@@ -17,6 +17,8 @@ const cl_bool NON_BLOCKING_READ = CL_FALSE;
 const size_t NO_OFFSET = 0;
 const float NO_SCALAR = 1.0f;
 const float CLEAR_C = 0.0f;
+template<typename>
+inline constexpr bool always_false = false;
 #endif
 
 namespace Utils {
@@ -109,6 +111,111 @@ namespace Utils {
     };
 
     void saveBuffer(const cl::CommandQueue& p_queue, const cl::Buffer& p_buffer, H5::Group& p_group, const std::string& p_name, size_t p_size);
+
+    template <typename T>
+    std::vector<T> readVectorFromHDF5(const H5::Group& p_group, const std::string& p_attrName) {
+        if (!p_group.attrExists(p_attrName)) {
+            throw std::runtime_error("Attribute " + p_attrName + " does not exist");
+        }
+
+        H5::Attribute attr = p_group.openAttribute(p_attrName);
+        H5::DataType type = attr.getDataType();
+        H5::DataSpace space = attr.getSpace();
+
+        hsize_t numElements = 1;
+        int rank = space.getSimpleExtentNdims();
+        if (rank != 1) {
+            throw std::runtime_error("Attribute " + p_attrName + " is not 1D");
+        }
+        space.getSimpleExtentDims(&numElements, nullptr);
+
+        std::vector<T> result(numElements);
+        attr.read(type, result.data());
+
+        return result;
+    }
+
+
+    template <typename T>
+    void writeVectorToHDF5(H5::Group& group, const std::string& attrName, const std::vector<T>& data) {
+        if (group.attrExists(attrName)) {
+            group.removeAttr(attrName);
+        }
+
+        hsize_t dims[1] = { data.size() };
+        H5::DataSpace space(1, dims);
+
+        const H5::PredType& h5Type =
+        []() -> const H5::PredType& {
+            if constexpr (std::is_same_v<T, int>) {
+                return H5::PredType::NATIVE_INT;
+            } else if constexpr (std::is_same_v<T, size_t>) {
+                return H5::PredType::NATIVE_HSIZE;
+            } else if constexpr (std::is_same_v<T, float>) {
+                return H5::PredType::NATIVE_FLOAT;
+            } else if constexpr (std::is_same_v<T, double>) {
+                return H5::PredType::NATIVE_DOUBLE;
+            } else if constexpr (std::is_same_v<T, bool>) {
+                return H5::PredType::NATIVE_HBOOL;
+            } else if constexpr (std::is_same_v<T, char>) {
+                return H5::PredType::NATIVE_CHAR;
+            } else if constexpr (std::is_same_v<T, unsigned int>) {
+                return H5::PredType::NATIVE_UINT;
+            } else {
+                static_assert(always_false<T>, "Unsupported type for HDF5 attribute");
+            }
+        }();
+
+        H5::Attribute attr = group.createAttribute(attrName, h5Type, space);
+        attr.write(h5Type, data.data());
+    }
+
+
+    template <typename T>
+    T readValueFromHDF5(const H5::Group& group, const std::string& attrName) {
+        if (!group.attrExists(attrName)) {
+            throw std::runtime_error("Attribute " + attrName + " does not exist");
+        }
+
+        H5::Attribute attr = group.openAttribute(attrName);
+        H5::DataType type = attr.getDataType();
+
+        T value{};
+        attr.read(type, &value);
+        return value;
+    }
+
+    template <typename T>
+    void writeValueToHDF5(H5::Group& group, const std::string& attrName, const T& value) {
+        if (group.attrExists(attrName)) {
+            group.removeAttr(attrName);
+        }
+
+        const H5::PredType& h5Type =
+        []() -> const H5::PredType& {
+            if constexpr (std::is_same_v<T, int>) {
+                return H5::PredType::NATIVE_INT;
+            } else if constexpr (std::is_same_v<T, size_t>) {
+                return H5::PredType::NATIVE_HSIZE;
+            } else if constexpr (std::is_same_v<T, float>) {
+                return H5::PredType::NATIVE_FLOAT;
+            } else if constexpr (std::is_same_v<T, double>) {
+                return H5::PredType::NATIVE_DOUBLE;
+            } else if constexpr (std::is_same_v<T, bool>) {
+                return H5::PredType::NATIVE_HBOOL;
+            } else if constexpr (std::is_same_v<T, char>) {
+                return H5::PredType::NATIVE_CHAR;
+            } else if constexpr (std::is_same_v<T, unsigned int>) {
+                return H5::PredType::NATIVE_UINT;
+            } else {
+                static_assert(always_false<T>, "Unsupported type for HDF5 attribute");
+            }
+        }();
+
+        H5::DataSpace space(H5S_SCALAR);
+        H5::Attribute attr = group.createAttribute(attrName, h5Type, space);
+        attr.write(h5Type, &value);
+    }
 
     cl::Buffer loadBuffer(const cl::Context& p_context, 
                           const H5::Group& p_layerGroup, 

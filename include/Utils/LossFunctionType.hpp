@@ -26,4 +26,13 @@ namespace Utils {
                 throw std::invalid_argument("Unknown LossFunctionType");
         }
     }
+
+    inline std::string lossFunctionTypeToString(LossFunctionType p_type) {
+        switch(p_type) {
+            case LossFunctionType::MeanSquaredError: return "MeanSquaredError";
+            case LossFunctionType::BinaryCrossEntropy: return "BinaryCrossEntropy";
+            default:
+                return "Unknown";
+        }
+    }
 }

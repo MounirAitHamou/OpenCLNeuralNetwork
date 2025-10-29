@@ -1,7 +1,7 @@
 #pragma once
 
 #include "Utils/NetworkArgs.hpp"
-#include "DataLoader/AllDataLoaders.hpp"
+#include "DataLoaders/AllDataLoaders.hpp"
 #include "Utils/PolicyBatch.hpp"
 
 #include <algorithm>
@@ -21,42 +21,26 @@ public:
     
     std::vector<float> predict(const cl::Buffer& p_inputBatch, size_t p_batchSize);
     double trainStepLoss(const Batch& p_batch, bool p_lossReporting=false);
-    void trainStepPolicy(const PolicyBatch& p_batch);
     void train(DataLoader& p_dataLoader, int p_epochs, bool p_lossReporting=false);
+    cl::Event forward(const cl::Buffer& p_batchInputs, size_t p_batchSize);
+    double computeLossAsync(cl::Event& p_forwardEvent, const std::vector<float>& p_batchTargets, const size_t p_batchSize);
+    void computeLossGradients(const cl::Buffer& p_batchTargets, const size_t p_batchSize);
+    void uploadOutputDeltas(const std::vector<float>& p_hostGradients);
+    void copyOutputDeltasFromBuffer(const cl::Buffer& p_deviceGradients, const size_t p_batchSize);
+    void backward(const cl::Buffer& p_batchInputs, const size_t p_batchSize);
 
-    NeuralNetwork& addDense(const size_t p_numOutputNeurons, const Utils::ActivationType p_activationType = Utils::ActivationType::Linear);
-    NeuralNetwork& addConvolutional(const Utils::FilterDimensions& p_filterDimensions, const Utils::StrideDimensions& p_strideDimensions, const Utils::PaddingType p_paddingType, const Utils::ActivationType p_activationType);
+    NeuralNetwork& addDense(const size_t p_numOutputNeurons);
+    NeuralNetwork& addConvolutional(const Utils::FilterDimensions& p_filterDimensions, const Utils::StrideDimensions& p_strideDimensions, const Utils::PaddingType p_paddingType);
+    NeuralNetwork& addLeakyReLU(float p_alpha);
+    NeuralNetwork& addReLU();
+    NeuralNetwork& addSigmoid();
+    NeuralNetwork& addSoftmax();
+    NeuralNetwork& addTanh();
 
-    void print() const {
-        std::cout << "Neural Network Details:\n";
-        std::cout << "Input Dimensions: " << m_inputDimensions.toString() << "\n";
-        std::cout << "Loss Function: ";
-        switch (m_lossFunctionType) {
-            case Utils::LossFunctionType::MeanSquaredError:
-                std::cout << "Mean Squared Error\n";
-                break;
-            case Utils::LossFunctionType::BinaryCrossEntropy:
-                std::cout << "Binary Cross Entropy\n";
-                break;
-            default:
-                std::cout << "Unknown\n";
-                break;
-        }
-        std::cout << "Batch Size: " << m_batchSize << "\n";
-        std::cout << "Layers: \n\n";
-        for(const auto& layer : m_layers){
-            layer->print(m_oclResources->getForwardBackpropQueue());
-        }
-        
-        std::cout << "Optimizer: \n\n";
-        m_optimizer->print();
-    }
-
-    void saveNetwork(const std::string& p_fileName) const;
-    
-    static NeuralNetwork loadNetwork(std::shared_ptr<Utils::SharedResources> p_sharedResources, const std::string& p_fileName);
-
+    void save(const std::string& p_fileName) const;
+    static NeuralNetwork load(std::shared_ptr<Utils::SharedResources> p_sharedResources, const std::string& p_fileName);
     bool equals(const NeuralNetwork& p_other) const;
+    void print() const;
 
     std::shared_ptr<Utils::SharedResources> getSharedResources() const {
         return m_oclResources->getSharedResources();
@@ -80,11 +64,6 @@ private:
 
     NeuralNetwork(Utils::OpenCLResources&& p_oclResources, const H5::H5File& p_file);
 
-    double computeLossAsync(cl::Event& p_forwardEvent, const std::vector<float>& p_batchTargets);
-
-    cl::Event forward(const cl::Buffer& p_batchInputs, size_t p_batchSize);
-    void computeLossGradients(const cl::Buffer& p_batchTargets);
-    void computePolicyGradients(const cl::Buffer& p_batchActions, const cl::Buffer& p_batchRewards);
-    void backward(const cl::Buffer& p_batchInputs);
+    
     void setupKernels();
 };
