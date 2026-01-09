@@ -32,7 +32,7 @@ add_executable(OpenCLNeuralNetwork
     src/Layers/ActivationLayers/Tanh/TanhLayer.cpp
     src/Layers/TrainableLayers/Convolutional/ConvolutionalLayer.cpp
     src/Layers/TrainableLayers/Dense/DenseLayer.cpp
-    src/NeuralNetwork/NeuralNetwork.cpp
+    src/NeuralNetworks/Local/LocalNeuralNetwork.cpp
     src/Optimizers/AdamBaseOptimizers/Adam/AdamOptimizer.cpp
     src/Optimizers/AdamBaseOptimizers/AdamW/AdamWOptimizer.cpp
     src/Optimizers/SGD/SGDOptimizer.cpp
@@ -75,13 +75,13 @@ target_link_libraries(OpenCLNeuralNetwork PRIVATE
 
 add_custom_command(
     TARGET OpenCLNeuralNetwork POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "${CLBLAST_DIR}/build/Release/clblast.dll"
         $<TARGET_FILE_DIR:OpenCLNeuralNetwork>
-    COMMAND ${CMAKE_COMMAND} -E copy
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "${HDF5_ROOT}/bin/hdf5_cpp.dll"
         $<TARGET_FILE_DIR:OpenCLNeuralNetwork>
-    COMMAND ${CMAKE_COMMAND} -E copy
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "${HDF5_ROOT}/bin/hdf5.dll"
         $<TARGET_FILE_DIR:OpenCLNeuralNetwork>
     COMMENT "Copying required DLLs (CLBlast + HDF5) to the executable directory"

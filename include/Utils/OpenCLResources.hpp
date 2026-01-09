@@ -70,10 +70,6 @@ namespace Utils {
             return m_concurrentQueue;
         }
 
-        unsigned int getErrorCode() const {
-            return m_errorCode;
-        }
-        
         static OpenCLResources createOpenCLResources(const std::string& p_kernelsPath = "kernels");
 
         static OpenCLResources createOpenCLResources(std::shared_ptr<SharedResources> p_sharedResources);
@@ -85,9 +81,6 @@ namespace Utils {
         cl::CommandQueue m_forwardBackpropQueue;
         cl::CommandQueue m_deltaToGradientQueue;
         cl::CommandQueue m_concurrentQueue;
-        unsigned int m_errorCode;
-
-        OpenCLResources() : m_errorCode(1) {}
 
         OpenCLResources(cl::Context&& p_context, cl::Program&& p_program, 
                         cl::CommandQueue&& p_forwardBackpropQueue, cl::CommandQueue&& p_deltaToGradientQueue, 
@@ -95,8 +88,7 @@ namespace Utils {
             : m_sharedResources(std::make_shared<SharedResources>(std::move(p_context), std::move(p_program))),
               m_forwardBackpropQueue(std::move(p_forwardBackpropQueue)),
               m_deltaToGradientQueue(std::move(p_deltaToGradientQueue)),
-              m_concurrentQueue(std::move(p_concurrentQueue)),
-              m_errorCode(0) {}
+              m_concurrentQueue(std::move(p_concurrentQueue)) {}
 
         OpenCLResources(std::shared_ptr<SharedResources> p_sharedResources, 
                         cl::CommandQueue&& p_forwardBackpropQueue, cl::CommandQueue&& p_deltaToGradientQueue, 
@@ -104,8 +96,7 @@ namespace Utils {
             : m_sharedResources(std::move(p_sharedResources)),
               m_forwardBackpropQueue(std::move(p_forwardBackpropQueue)),
               m_deltaToGradientQueue(std::move(p_deltaToGradientQueue)),
-              m_concurrentQueue(std::move(p_concurrentQueue)),
-              m_errorCode(0) {}
+              m_concurrentQueue(std::move(p_concurrentQueue)) {}
 
         static std::vector<std::string> getAllKernelFiles(const std::string& p_folderPath);
     };

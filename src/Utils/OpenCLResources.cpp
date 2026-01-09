@@ -127,8 +127,9 @@ namespace Utils {
         
         std::string buildLog = program.getBuildInfo<CL_PROGRAM_BUILD_LOG>(device);
         std::cerr << "Build log for device " << device.getInfo<CL_DEVICE_NAME>() << ":\n" << buildLog << std::endl;
-        if (!buildLog.empty()) {
-            return OpenCLResources();
+        if (buildLog.find("error") != std::string::npos ||
+            buildLog.find("Error") != std::string::npos) {
+            throw std::runtime_error("OpenCL build failed with errors.");
         }
 
         return OpenCLResources(std::move(context), std::move(program), std::move(forwardBackpropQueue), std::move(deltaToGradientQueue), std::move(concurrentQueue));
@@ -202,8 +203,6 @@ namespace Utils {
         } else {
             std::cout << "ConcurrentQueue: Invalid" << std::endl;
         }
-
-        std::cout << "Error Code: " << m_errorCode << std::endl;
         std::cout << "------------------------------" << std::endl;
     }
 

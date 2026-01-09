@@ -1,0 +1,53 @@
+#pragma once
+
+#include "DataLoaders/AllDataLoaders.hpp"
+#include "Utils/NetworkArgs.hpp"
+#include "Utils/NetworkType.hpp"
+#include <algorithm>
+#include <iostream>
+#include <vector>
+#include <memory>
+#include <thread>
+#include <future>
+
+class NeuralNetwork {
+public:
+    NeuralNetwork() = default;
+
+    NeuralNetwork(Utils::OpenCLResources&& p_oclResources, const Utils::Dimensions& p_inputDimensions, Utils::LossFunctionType p_lossFunctionType, const size_t p_batchSize) 
+    : m_batchSize(p_batchSize),
+      m_inputDimensions(p_inputDimensions),
+      m_lossFunctionType(p_lossFunctionType)
+      {
+        m_oclResources = std::make_unique<Utils::OpenCLResources>(std::move(p_oclResources));
+      }
+
+    NeuralNetwork(Utils::OpenCLResources&& p_oclResources, const H5::H5File& p_file, const size_t p_batchSize)
+    : m_batchSize(p_batchSize) {
+        m_oclResources = std::make_unique<Utils::OpenCLResources>(std::move(p_oclResources));
+        m_inputDimensions = Utils::Dimensions(Utils::readVectorFromHDF5<size_t>(p_file, "inputDimensions"));
+        m_lossFunctionType = Utils::lossFunctionTypeFromUint(Utils::readValueFromHDF5<unsigned int>(p_file, "lossFunctionType"));
+    }
+
+
+    const std::vector<float> getLayersSerializedArgs() const { 
+        std::vector<float> layersArgs = {};
+        for (const auto& layer : m_layers) {
+            auto& layerArgs = layer->getSerializedArgs();
+            layersArgs.insert(layersArgs.end(), layerArgs.begin(), layerArgs.end());
+        }
+        return layersArgs;
+    }
+
+    virtual void setBatchSize(const size_t p_batchSize) = 0;
+
+    virtual Utils::NetworkType getType() const = 0;
+protected:
+    std::vector<std::unique_ptr<Layers::Layer>> m_layers;
+    std::unique_ptr<Utils::OpenCLResources> m_oclResources;
+    
+    size_t m_batchSize;
+    Utils::Dimensions m_inputDimensions;
+
+    Utils::LossFunctionType m_lossFunctionType;
+};

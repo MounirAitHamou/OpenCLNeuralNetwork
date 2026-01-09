@@ -44,7 +44,7 @@ namespace Utils {
         return std::make_unique<TanhLayerArgs>();
     }
 
-    std::unique_ptr<Layer> loadLayer(std::shared_ptr<Utils::SharedResources> p_sharedResources, 
+    std::unique_ptr<Layers::Layer> loadLayer(std::shared_ptr<Utils::SharedResources> p_sharedResources, 
                                      const H5::Group& p_layerGroup, 
                                      const size_t p_batchSize) {
         unsigned int layerType;
@@ -52,19 +52,19 @@ namespace Utils {
 
         switch (layerTypeFromUint(layerType)) {
             case LayerType::Dense:
-                return std::make_unique<DenseLayer>(p_sharedResources, p_layerGroup, p_batchSize);
+                return std::make_unique<Layers::Trainable::DenseLayer>(p_sharedResources, p_layerGroup, p_batchSize);
             case LayerType::Convolutional:
-                return std::make_unique<ConvolutionalLayer>(p_sharedResources, p_layerGroup, p_batchSize);
+                return std::make_unique<Layers::Trainable::ConvolutionalLayer>(p_sharedResources, p_layerGroup, p_batchSize);
             case LayerType::ReLU:
-                return std::make_unique<ReLULayer>(p_sharedResources, p_layerGroup, p_batchSize);
+                return std::make_unique<Layers::Activation::ReLULayer>(p_sharedResources, p_layerGroup, p_batchSize);
             case LayerType::LeakyReLU:
-                return std::make_unique<LeakyReLULayer>(p_sharedResources, p_layerGroup, p_batchSize);
+                return std::make_unique<Layers::Activation::LeakyReLULayer>(p_sharedResources, p_layerGroup, p_batchSize);
             case LayerType::Sigmoid:
-                return std::make_unique<SigmoidLayer>(p_sharedResources, p_layerGroup, p_batchSize);
+                return std::make_unique<Layers::Activation::SigmoidLayer>(p_sharedResources, p_layerGroup, p_batchSize);
             case LayerType::Softmax:
-                return std::make_unique<SoftmaxLayer>(p_sharedResources, p_layerGroup, p_batchSize);
+                return std::make_unique<Layers::Activation::SoftmaxLayer>(p_sharedResources, p_layerGroup, p_batchSize);
             case LayerType::Tanh:
-                return std::make_unique<TanhLayer>(p_sharedResources, p_layerGroup, p_batchSize);
+                return std::make_unique<Layers::Activation::TanhLayer>(p_sharedResources, p_layerGroup, p_batchSize);
             default:
                 throw std::runtime_error("Unsupported layer type: " + std::to_string(layerType));
         }
