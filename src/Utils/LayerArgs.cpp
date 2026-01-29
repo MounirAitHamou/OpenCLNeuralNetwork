@@ -36,12 +36,12 @@ namespace Utils {
         return std::make_unique<SigmoidLayerArgs>();
     }
 
-    std::unique_ptr<LayerArgs> makeSoftmaxLayerArgs() {
-        return std::make_unique<SoftmaxLayerArgs>();
-    }
-
     std::unique_ptr<LayerArgs> makeTanhLayerArgs() {
         return std::make_unique<TanhLayerArgs>();
+    }
+
+    std::unique_ptr<LayerArgs> makeSoftmaxLayerArgs() {
+        return std::make_unique<SoftmaxLayerArgs>();
     }
 
     std::unique_ptr<Layers::Layer> loadLayer(std::shared_ptr<Utils::SharedResources> p_sharedResources, 
@@ -61,10 +61,10 @@ namespace Utils {
                 return std::make_unique<Layers::Activation::LeakyReLULayer>(p_sharedResources, p_layerGroup, p_batchSize);
             case LayerType::Sigmoid:
                 return std::make_unique<Layers::Activation::SigmoidLayer>(p_sharedResources, p_layerGroup, p_batchSize);
-            case LayerType::Softmax:
-                return std::make_unique<Layers::Activation::SoftmaxLayer>(p_sharedResources, p_layerGroup, p_batchSize);
             case LayerType::Tanh:
                 return std::make_unique<Layers::Activation::TanhLayer>(p_sharedResources, p_layerGroup, p_batchSize);
+            case LayerType::Softmax:
+                return std::make_unique<Layers::Activation::SoftmaxLayer>(p_sharedResources, p_layerGroup, p_batchSize);
             default:
                 throw std::runtime_error("Unsupported layer type: " + std::to_string(layerType));
         }

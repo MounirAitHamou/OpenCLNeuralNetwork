@@ -1,8 +1,5 @@
 #pragma once
-
 #include "Layers/AllLayers.hpp"
-#include "Utils/LossFunctionType.hpp"
-
 #include <memory>
 #include <stdexcept>
 #include <vector>
@@ -117,19 +114,6 @@ namespace Utils {
         }
     };
 
-    struct SoftmaxLayerArgs : public LayerArgs {
-    public:
-        SoftmaxLayerArgs() = default;
-
-        std::unique_ptr<Layers::Layer> createLayer(const size_t p_layerId, std::shared_ptr<Utils::SharedResources> p_sharedResources, const Dimensions& p_inputDimensions, const size_t p_batchSize, std::mt19937& p_rng) const final override {
-            return std::make_unique<Layers::Activation::SoftmaxLayer>(p_layerId, p_sharedResources, p_inputDimensions, p_batchSize);
-        }
-
-        LayerType getLayerType() const override {
-            return LayerType::Softmax;
-        }
-    };
-
     struct TanhLayerArgs : public LayerArgs {
     public:
         TanhLayerArgs() = default;
@@ -143,27 +127,26 @@ namespace Utils {
         }
     };
 
-    std::unique_ptr<LayerArgs> makeDenseLayerArgs(
-        const Dimensions& p_outputDimensions
-    );
+    struct SoftmaxLayerArgs : public LayerArgs {
+    public:
+        SoftmaxLayerArgs() = default;
 
-    std::unique_ptr<LayerArgs> makeConvolutionalLayerArgs(
-        const FilterDimensions& p_filterDimensions,
-        const StrideDimensions& p_strideDimensions,
-        PaddingType p_paddingType
-    );
+        std::unique_ptr<Layers::Layer> createLayer(const size_t p_layerId, std::shared_ptr<Utils::SharedResources> p_sharedResources, const Dimensions& p_inputDimensions, const size_t p_batchSize, std::mt19937& p_rng) const final override {
+            return std::make_unique<Layers::Activation::SoftmaxLayer>(p_layerId, p_sharedResources, p_inputDimensions, p_batchSize);
+        }
 
+        LayerType getLayerType() const override {
+            return LayerType::Softmax;
+        }
+    };
+
+    std::unique_ptr<LayerArgs> makeDenseLayerArgs(const Dimensions& p_outputDimensions);
+    std::unique_ptr<LayerArgs> makeConvolutionalLayerArgs(const FilterDimensions& p_filterDimensions, const StrideDimensions& p_strideDimensions, PaddingType p_paddingType);
     std::unique_ptr<LayerArgs> makeReLULayerArgs();
-
-    std::unique_ptr<LayerArgs> makeLeakyReLULayerArgs(
-        float p_alpha
-    );
-
+    std::unique_ptr<LayerArgs> makeLeakyReLULayerArgs(float p_alpha);
     std::unique_ptr<LayerArgs> makeSigmoidLayerArgs();
-
-    std::unique_ptr<LayerArgs> makeSoftmaxLayerArgs();
-
     std::unique_ptr<LayerArgs> makeTanhLayerArgs();
-
+    std::unique_ptr<LayerArgs> makeSoftmaxLayerArgs();
+    
     std::unique_ptr<Layers::Layer> loadLayer(std::shared_ptr<Utils::SharedResources> p_sharedResources, const H5::Group& p_layerGroup, const size_t p_batchSize);
 }

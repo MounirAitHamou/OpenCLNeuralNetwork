@@ -27,12 +27,14 @@ namespace DataLoaders {
 
         virtual Utils::Batch getBatch(size_t p_batchStart, size_t p_batchSize) const = 0;
 
-        virtual void loadData(const std::string& p_source,
-                            std::vector<std::string> p_inputColumns,
-                            std::vector<std::string> p_targetColumns) = 0;
+        virtual void loadData(const std::string& p_source) = 0;
 
         virtual void splitData(float p_trainRatio, float p_valRatio, size_t p_seed) = 0;
-        virtual void shuffleCurrentPartition() = 0;
+        virtual void shuffleCurrentPartition(size_t p_seed) {
+            std::mt19937 g(static_cast<unsigned long>(p_seed));
+            shuffleCurrentPartition(g);
+        }
+        virtual void shuffleCurrentPartition(std::mt19937& p_rng) = 0;
 
         virtual const  size_t getTotalSamples() const = 0;
         virtual const  size_t getInputSize() const = 0;
@@ -61,22 +63,14 @@ namespace DataLoaders {
 
     protected:
         size_t m_batchSize;
+        std::vector<std::vector<float>> m_allData;
         std::vector<size_t>* m_currentActiveIndices = nullptr;
-
-        std::string m_filePath;
 
         std::shared_ptr<Utils::SharedResources> m_sharedResources;
 
         std::vector<size_t> m_trainIndices;
         std::vector<size_t> m_validationIndices;
         std::vector<size_t> m_testIndices;
-        std::vector<size_t> m_inputColumnsIndices;
-        std::vector<size_t> m_targetColumnsIndices;
-
-        std::vector<std::string> m_header;
-
-        size_t m_numInputFeatures = 0;
-        size_t m_numTargetFeatures = 0;
     };
 
     class DataLoaderIterator {

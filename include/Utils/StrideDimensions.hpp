@@ -1,3 +1,4 @@
+#pragma once
 #include "Utils/Dimensions.hpp"
 namespace Utils {
     struct StrideDimensions : public Dimensions {

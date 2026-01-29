@@ -1,35 +1,6 @@
 #ifndef HELPER_FUNCTIONS_CLH
 #define HELPER_FUNCTIONS_CLH
-
-#define LOSS_MSE      0
-#define LOSS_BCE      1
-
 #define LOG_SAFE_VALUE 1e-9f
 
-float computeLossDerivative(float p_pred, float p_target, unsigned int p_lossType) {
-    switch (p_lossType) {
-        case LOSS_MSE:
-            return (p_pred - p_target);
-        case LOSS_BCE:
-            return (p_pred - p_target) / (p_pred * (1.0f - p_pred) + LOG_SAFE_VALUE);
-        default:
-            return 0.0f;
-    }
-}
-
-float applyLossFunction(const float p_pred, const float p_target, const unsigned int p_lossType) {
-    switch (p_lossType) {
-        case LOSS_MSE: {
-            float diff = p_pred - p_target;
-            return diff * diff;
-        }
-        case LOSS_BCE: {
-            float clamped_pred = fmin(fmax(p_pred, LOG_SAFE_VALUE), 1.0f - LOG_SAFE_VALUE);
-            return -p_target * log(clamped_pred) - (1.0f - p_target) * log(1.0f - clamped_pred);
-        }
-        default:
-            return 0.0f;
-    }
-}
 
 #endif

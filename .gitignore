@@ -2,5 +2,3 @@
 OpenCLNeuralNetwork.exe
 *.h5
 .vscode/settings.json
-/data
-*.dll

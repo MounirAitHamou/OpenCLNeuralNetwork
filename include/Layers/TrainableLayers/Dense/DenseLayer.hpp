@@ -26,6 +26,11 @@ namespace Layers::Trainable {
         size_t getWeightsSize() const final override { return getTotalInputElements() * getTotalOutputElements(); };
         size_t getBiasesSize() const final override { return getTotalOutputElements(); }
 
+        cl::Buffer& getOnesBuffer() { return m_onesBuffer; }
+
+        cl::Buffer& getclblastWorkspace() { return m_clblastWorkspace; }
+        cl::Buffer& getclblastDeltaWorkspace() { return m_clblastDeltaWorkspace; }
+
         const std::vector<float> getSerializedArgs() const final override {
             std::vector<float> layerArgs = getLayerSerializedArgs();
             layerArgs.push_back(static_cast<float>(getTotalOutputElements()));
@@ -55,6 +60,10 @@ namespace Layers::Trainable {
         }
 
     private:
+        cl::Buffer m_onesBuffer;
+        cl::Buffer m_clblastWorkspace;
+        cl::Buffer m_clblastDeltaWorkspace;
+
         void allocateDenseLayerBuffers(const size_t p_batchSize);
         void initializeWeightsAndBiases(std::mt19937& p_rng) final override;
         void setupKernels() final override;

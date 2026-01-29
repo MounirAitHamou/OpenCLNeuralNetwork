@@ -10,8 +10,8 @@ namespace Utils {
         ReLU = 2,
         LeakyReLU = 3,
         Sigmoid = 4,
-        Softmax = 5,
-        Tanh = 6
+        Tanh = 5,
+        Softmax = 6
     };
 
     inline LayerType layerTypeFromUint(unsigned int p_val) {
@@ -21,8 +21,8 @@ namespace Utils {
             case 2: return LayerType::ReLU;
             case 3: return LayerType::LeakyReLU;
             case 4: return LayerType::Sigmoid;
-            case 5: return LayerType::Softmax;
-            case 6: return LayerType::Tanh;
+            case 5: return LayerType::Tanh;
+            case 6: return LayerType::Softmax;
             default:
                 throw std::invalid_argument("Invalid value for LayerType");
         }
@@ -35,8 +35,8 @@ namespace Utils {
             case LayerType::ReLU: return "ReLU";
             case LayerType::LeakyReLU: return "LeakyReLU";
             case LayerType::Sigmoid: return "Sigmoid";
-            case LayerType::Softmax: return "Softmax";
             case LayerType::Tanh: return "Tanh";
+            case LayerType::Softmax: return "Softmax";
             default:
                 throw std::invalid_argument("Invalid LayerType value");
         }

@@ -4,7 +4,7 @@ namespace NeuralNetworks::Local {
                                 const Utils::NetworkArgs& p_networkArgs,
                                 const size_t p_seed,
                                 const size_t p_batchSize)
-        : NeuralNetwork(std::move(p_oclResources), p_networkArgs.getInitialInputDimensions(), p_networkArgs.getLossFunctionType(), p_batchSize)
+        : NeuralNetwork(std::move(p_oclResources), p_networkArgs.getInitialInputDimensions(), p_batchSize)
     {
         m_rng = std::mt19937(static_cast<unsigned long>(p_seed));
         
@@ -13,8 +13,8 @@ namespace NeuralNetworks::Local {
             m_layers.emplace_back(layerArgs->createLayer(m_layers.size(), m_oclResources->getSharedResources(), currentInputDimensions, m_batchSize, m_rng));
             currentInputDimensions = m_layers.back()->getOutputDimensions();
         }
+        m_lossFunction = p_networkArgs.getLossFunctionArguments()->createLossFunction(m_oclResources->getSharedResources());
         m_optimizer = p_networkArgs.getOptimizerArguments()->createOptimizer(m_oclResources->getSharedResources());
-        setupKernels();
     }
 
     LocalNeuralNetwork::LocalNeuralNetwork(Utils::OpenCLResources&& p_oclResources, 
@@ -53,9 +53,12 @@ namespace NeuralNetworks::Local {
             H5::Group layerGroup = layersGroup.openGroup(layerId);
             m_layers.emplace_back(Utils::loadLayer(m_oclResources->getSharedResources(), layerGroup, m_batchSize));
         }
+
+        H5::Group lossFunctionGroup = p_file.openGroup("lossFunction");
+        m_lossFunction = Utils::loadLossFunction(m_oclResources->getSharedResources(), lossFunctionGroup);
+
         H5::Group optimizerGroup = p_file.openGroup("optimizer");
         m_optimizer = Utils::loadOptimizer(m_oclResources->getSharedResources(), optimizerGroup);
-        setupKernels();
     }
 
     std::vector<float> LocalNeuralNetwork::predict(const cl::Buffer& p_inputBatch,
@@ -88,8 +91,8 @@ namespace NeuralNetworks::Local {
         if (p_lossReporting == true){
             lossFuture = std::async(std::launch::async, &LocalNeuralNetwork::computeLossAsync, this, std::ref(forwardEvent), p_batch.getTargetsVector(), batchSize);
         }
-        computeLossGradients(targets, batchSize);
-        backward(inputs, batchSize);
+        cl::Event deltaEvent = computeLossGradients(targets, batchSize);
+        backward(deltaEvent, inputs, batchSize);
         
         if (p_lossReporting) {
             lossFuture.wait();
@@ -99,19 +102,34 @@ namespace NeuralNetworks::Local {
         return loss;
     }
 
-    void LocalNeuralNetwork::train(DataLoaders::DataLoader& p_dataLoader, int p_epochs, bool p_lossReporting) {
+    void LocalNeuralNetwork::train(
+        DataLoaders::DataLoader& p_dataLoader,
+        int p_epochs,
+        bool p_lossReporting
+    ) {
         p_dataLoader.activateTrainPartition();
-        double totalLoss;
+
         for (int epoch = 0; epoch < p_epochs; ++epoch) {
-            p_dataLoader.shuffleCurrentPartition();
-            for (const Utils::Batch& batch: p_dataLoader){
-                totalLoss = trainStep(batch, p_lossReporting);
+            p_dataLoader.shuffleCurrentPartition(m_rng);
+
+            double epochLoss = 0.0;
+            size_t batchCount = 0;
+
+            for (const Utils::Batch& batch : p_dataLoader) {
+                double batchLoss = trainStep(batch, p_lossReporting);
+                epochLoss += batchLoss;
+                batchCount++;
             }
-            if (p_lossReporting == true){
-                std::cout << "Epoch " << (epoch + 1) << " | Loss: " << (totalLoss / (p_dataLoader.getActivePartition().size() * m_layers.back()->getTotalOutputElements())) << "\n";
-            }   
-        }   
+
+            if (p_lossReporting) {
+                std::cout
+                    << "Epoch " << (epoch + 1)
+                    << " | Loss: " << (epochLoss / batchCount)
+                    << "\n";
+            }
+        }
     }
+
 
     cl::Event LocalNeuralNetwork::forward(const cl::Buffer& p_batchInputs, size_t p_batchSize) {
         if (m_batchSize < p_batchSize) setBatchSize(p_batchSize);
@@ -125,37 +143,24 @@ namespace NeuralNetworks::Local {
     }
 
     double LocalNeuralNetwork::computeLossAsync(cl::Event& p_forwardEvent, const std::vector<float>& p_batchTargets, const size_t p_batchSize) {
-        size_t flatOutputSize = m_layers.back()->getTotalOutputElements();
-        size_t totalBatchElements = p_batchSize * flatOutputSize;
-
-        double totalLoss = 0.0;
-        std::vector<float> predictions(totalBatchElements);
-
         std::vector<cl::Event> waitList = {p_forwardEvent};
-
-        m_oclResources->getConcurrentQueue().enqueueReadBuffer(m_layers.back()->getOutputs(), BLOCKING_READ, NO_OFFSET, sizeof(float) * totalBatchElements, predictions.data(),
-                                &waitList);
-                                
-        for (size_t i = 0; i < totalBatchElements; ++i) {
-            totalLoss += applyLossFunction(m_lossFunctionType, predictions[i], p_batchTargets[i]);
-        }
-
-        return totalLoss;
+        return m_lossFunction->computeLoss(m_oclResources->getConcurrentQueue(), 
+                                    waitList,
+                                    m_layers.back()->getOutputs(), 
+                                    p_batchTargets, 
+                                    m_layers.back()->getTotalOutputElements(), 
+                                    p_batchSize);
     }
 
-    void LocalNeuralNetwork::computeLossGradients(const cl::Buffer& p_batchTargets, const size_t p_batchSize) {
-        if (m_batchSize < p_batchSize) setBatchSize(p_batchSize);
-        m_lossGradientKernel.setArg(0, p_batchTargets);
-        cl_int err = m_oclResources->getForwardBackpropQueue().enqueueNDRangeKernel(
-            m_lossGradientKernel,
-            cl::NullRange,
-            cl::NDRange(m_layers.back()->getTotalOutputElements(), p_batchSize),
-            cl::NullRange
+    cl::Event LocalNeuralNetwork::computeLossGradients(const cl::Buffer& p_batchTargets, const size_t p_batchSize) {
+        return m_lossFunction->computeLossGradient(
+            m_oclResources->getForwardBackpropQueue(),
+            m_layers.back()->getOutputs(),
+            p_batchTargets,
+            m_layers.back()->getDeltas(),
+            m_layers.back()->getTotalOutputElements(),
+            p_batchSize
         );
-        if (err != CL_SUCCESS) {
-            std::cerr << "Error enqueuing loss gradient kernel: " << err << "\n";
-            throw std::runtime_error("Failed to enqueue loss gradient kernel. Error code: " + std::to_string(err));
-        }
     }
 
     void LocalNeuralNetwork::uploadOutputDeltas(const std::vector<float>& p_hostGradients) {
@@ -180,20 +185,18 @@ namespace NeuralNetworks::Local {
         );
     }
 
-    void LocalNeuralNetwork::backward(const cl::Buffer& p_batchInputs, const size_t p_batchSize) {
+    void LocalNeuralNetwork::backward(cl::Event& p_deltaEvent, const cl::Buffer& p_batchInputs, const size_t p_batchSize) {
         if (m_layers.empty()) return;
         if (m_batchSize < p_batchSize) setBatchSize(p_batchSize);
         std::pair<cl::Event, cl::Event> gradientEvents;
-        std::pair<cl::Event, cl::Event> averageEvents;
-        cl::Event deltaEvent{};
+        cl::Event deltaEvent = p_deltaEvent;
         for (int l = static_cast<int>(m_layers.size()) - 1; l >= 1; --l) {
             auto& currentLayer = m_layers[l];
             auto& previousLayer = m_layers[l - 1];
             if (currentLayer->isTrainable()) {
                 auto& trainableLayer = static_cast<Layers::Trainable::TrainableLayer&>(*currentLayer);
                 gradientEvents = trainableLayer.computeGradients(m_oclResources->getDeltaToGradientQueue(), deltaEvent, previousLayer->getOutputs(), p_batchSize);
-                averageEvents = trainableLayer.averageGradients(m_oclResources->getConcurrentQueue(), gradientEvents, p_batchSize);
-                m_optimizer->updateTrainableLayer(m_oclResources->getConcurrentQueue(), averageEvents, trainableLayer);
+                m_optimizer->updateTrainableLayer(m_oclResources->getConcurrentQueue(), gradientEvents, trainableLayer);
             }
             deltaEvent = currentLayer->backpropDeltas(m_oclResources->getForwardBackpropQueue(), previousLayer->getDeltas(), p_batchSize);
         }
@@ -201,10 +204,9 @@ namespace NeuralNetworks::Local {
         if (firstLayer->isTrainable()){
             auto& trainableLayer = static_cast<Layers::Trainable::TrainableLayer&>(*firstLayer);
             gradientEvents = trainableLayer.computeGradients(m_oclResources->getDeltaToGradientQueue(), deltaEvent, p_batchInputs, p_batchSize);
-            averageEvents = trainableLayer.averageGradients(m_oclResources->getConcurrentQueue(), gradientEvents, p_batchSize);
 
             if (m_optimizer)
-            m_optimizer->updateTrainableLayer(m_oclResources->getConcurrentQueue(), averageEvents, trainableLayer);
+            m_optimizer->updateTrainableLayer(m_oclResources->getConcurrentQueue(), gradientEvents, trainableLayer);
         }
         cl_int err = m_oclResources->getConcurrentQueue().finish();
 
@@ -225,7 +227,6 @@ namespace NeuralNetworks::Local {
         }
         auto layerArgs = Utils::makeDenseLayerArgs(outputDimensions);
         m_layers.emplace_back(layerArgs->createLayer(m_layers.size(), m_oclResources->getSharedResources(), inputDimensions, m_batchSize, m_rng));
-        setupKernels();
         return *this;
     }
 
@@ -239,7 +240,6 @@ namespace NeuralNetworks::Local {
         }
         auto layerArgs = Utils::makeConvolutionalLayerArgs(p_filterDimensions, p_strideDimensions, p_paddingType);
         m_layers.emplace_back(layerArgs->createLayer(m_layers.size(), m_oclResources->getSharedResources(), inputDimensions, m_batchSize, m_rng));
-        setupKernels();
         return *this;
     }
 
@@ -253,7 +253,6 @@ namespace NeuralNetworks::Local {
         }
         auto layerArgs = Utils::makeLeakyReLULayerArgs(p_alpha);
         m_layers.emplace_back(layerArgs->createLayer(m_layers.size(), m_oclResources->getSharedResources(), inputDimensions, m_batchSize, m_rng));
-        setupKernels();
         return *this;
     }
 
@@ -267,7 +266,6 @@ namespace NeuralNetworks::Local {
         }
         auto layerArgs = Utils::makeReLULayerArgs();
         m_layers.emplace_back(layerArgs->createLayer(m_layers.size(), m_oclResources->getSharedResources(), inputDimensions, m_batchSize, m_rng));
-        setupKernels();
         return *this;
     }
 
@@ -281,21 +279,6 @@ namespace NeuralNetworks::Local {
         }
         auto layerArgs = Utils::makeSigmoidLayerArgs();
         m_layers.emplace_back(layerArgs->createLayer(m_layers.size(), m_oclResources->getSharedResources(), inputDimensions, m_batchSize, m_rng));
-        setupKernels();
-        return *this;
-    }
-
-    LocalNeuralNetwork& LocalNeuralNetwork::addSoftmax() {
-        Utils::Dimensions inputDimensions;
-        if (m_layers.empty()){
-            inputDimensions = m_inputDimensions;
-        }
-        else{
-            inputDimensions = m_layers.back()->getOutputDimensions();
-        }
-        auto layerArgs = Utils::makeSoftmaxLayerArgs();
-        m_layers.emplace_back(layerArgs->createLayer(m_layers.size(), m_oclResources->getSharedResources(), inputDimensions, m_batchSize, m_rng));
-        setupKernels();
         return *this;
     }
 
@@ -309,7 +292,19 @@ namespace NeuralNetworks::Local {
         }
         auto layerArgs = Utils::makeTanhLayerArgs();
         m_layers.emplace_back(layerArgs->createLayer(m_layers.size(), m_oclResources->getSharedResources(), inputDimensions, m_batchSize, m_rng));
-        setupKernels();
+        return *this;
+    }
+
+    LocalNeuralNetwork& LocalNeuralNetwork::addSoftmax() {
+        Utils::Dimensions inputDimensions;
+        if (m_layers.empty()){
+            inputDimensions = m_inputDimensions;
+        }
+        else{
+            inputDimensions = m_layers.back()->getOutputDimensions();
+        }
+        auto layerArgs = Utils::makeSoftmaxLayerArgs();
+        m_layers.emplace_back(layerArgs->createLayer(m_layers.size(), m_oclResources->getSharedResources(), inputDimensions, m_batchSize, m_rng));
         return *this;
     }
 
@@ -327,7 +322,6 @@ namespace NeuralNetworks::Local {
             file.createDataSet("rngState", H5::PredType::NATIVE_CHAR, dataspace).write(state.data(), H5::PredType::NATIVE_CHAR);
 
             Utils::writeVectorToHDF5<size_t>(file, "inputDimensions", m_inputDimensions.getDimensions());
-            Utils::writeValueToHDF5<unsigned int>(file, "lossFunctionType", static_cast<unsigned int>(m_lossFunctionType));
 
             H5::Group layersGroup(file.createGroup("/layers"));
             Utils::writeValueToHDF5<size_t>(layersGroup, "numLayers" , m_layers.size());
@@ -345,6 +339,12 @@ namespace NeuralNetworks::Local {
                 }
                 H5::Group layerSubGroup(layersGroup.createGroup(std::to_string(layerId)));
                 m_layers[i]->save(m_oclResources->getForwardBackpropQueue(), layerSubGroup);
+            }
+            if (m_lossFunction){
+                H5::Group lossFunctionGroup(file.createGroup("/lossFunction"));
+                m_lossFunction->save(lossFunctionGroup);
+            } else {
+                std::cerr << "Warning: Loss Function is null, skipping its save operation." << std::endl;
             }
 
             if (m_optimizer) {
@@ -369,7 +369,6 @@ namespace NeuralNetworks::Local {
     bool LocalNeuralNetwork::equals(const LocalNeuralNetwork& p_other) const {
         if (m_batchSize != p_other.m_batchSize ||
             m_inputDimensions != p_other.m_inputDimensions ||
-            m_lossFunctionType != p_other.m_lossFunctionType ||
             m_layers.size() != p_other.m_layers.size())
             return false;
 
@@ -378,6 +377,17 @@ namespace NeuralNetworks::Local {
                 std::cout << "Mismatch in layer " << i << ".\n";
                 return false;
             }
+        }
+
+        if ((m_lossFunction == nullptr) != (p_other.m_lossFunction == nullptr)) {
+            std::cout << "One network has a loss function while the other does not.\n";
+            return false;
+        }
+
+
+        if (m_lossFunction && p_other.m_lossFunction && !m_lossFunction->equals(*p_other.m_lossFunction)) {
+            std::cout << "Mismatch in loss functions.\n";
+            return false;
         }
 
         if ((m_optimizer == nullptr) != (p_other.m_optimizer == nullptr)) {
@@ -419,7 +429,7 @@ namespace NeuralNetworks::Local {
     void LocalNeuralNetwork::print() const {
         std::cout << "Neural Network Details:\n";
         std::cout << "Input Dimensions: " << m_inputDimensions.toString() << "\n";
-        std::cout << "Loss Function: " << Utils::lossFunctionTypeToString(m_lossFunctionType) << "\n";
+        std::cout << "Loss Function: " << Utils::lossFunctionTypeToString(m_lossFunction->getType()) << "\n";
         std::cout << "Batch Size: " << m_batchSize << "\n";
         std::cout << "Layers: \n\n";
         for(const auto& layer : m_layers){
@@ -429,21 +439,5 @@ namespace NeuralNetworks::Local {
         std::cout << "############################################\n";
         std::cout << "Optimizer: \n\n";
         m_optimizer->print();
-    }
-
-    void LocalNeuralNetwork::setupKernels() {
-        if (m_layers.empty()) {
-            return;
-        }
-        cl_int err;
-        m_lossGradientKernel = cl::Kernel(m_oclResources->getSharedResources()->getProgram(), "computeLossGradient", &err);
-        if (err != CL_SUCCESS) {
-            throw std::runtime_error("Failed to create loss gradient kernel. Error code: " + std::to_string(err));
-        }
-        m_lossGradientKernel.setArg(1, m_layers.back()->getOutputs());
-        m_lossGradientKernel.setArg(2, m_layers.back()->getDeltas());
-        m_lossGradientKernel.setArg(3, (cl_uint)m_lossFunctionType);
-        m_lossGradientKernel.setArg(4, (cl_uint)m_layers.back()->getTotalOutputElements());
-        
     }
 }

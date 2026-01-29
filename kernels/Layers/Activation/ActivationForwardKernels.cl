@@ -59,4 +59,3 @@ __kernel void softmaxForward(
     for (unsigned int i = 0; i < p_numClasses; ++i)
         p_outputs[offset + i] = exp(p_inputs[offset + i] - maxVal) / sumExp;
 }
-

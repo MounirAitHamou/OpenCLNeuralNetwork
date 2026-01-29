@@ -8,7 +8,6 @@
 namespace Layers::Trainable {
     class ConvolutionalLayer : public TrainableLayer {
     public:
-
         ConvolutionalLayer(const size_t p_layerId, 
                         std::shared_ptr<Utils::SharedResources> p_sharedResources,
                         const Utils::Dimensions& p_inputDimensions,
@@ -27,7 +26,7 @@ namespace Layers::Trainable {
         cl::Event runForward(const cl::CommandQueue& p_forwardBackpropQueue, const cl::Buffer& p_inputs, const size_t p_batchSize) final override;
         cl::Event backpropDeltas(const cl::CommandQueue& p_forwardBackpropQueue, const cl::Buffer& p_previousLayerDeltas, const size_t p_batchSize) final override;
         std::pair<cl::Event, cl::Event> computeGradients(const cl::CommandQueue& p_deltaToGradientQueue, cl::Event& p_backpropEvent, const cl::Buffer& p_inputs, const size_t p_batchSize) final override;
-
+        
         Utils::LayerType getType() const final override { return Utils::LayerType::Convolutional; }
 
         size_t getWeightsSize() const final override { return getOutputChannels() * getInputChannels() * m_filterDimensions.getHeight() * m_filterDimensions.getWidth(); }
@@ -56,57 +55,12 @@ namespace Layers::Trainable {
             size_t im2colBatchCols = im2colCols * p_batchSize;
             m_biasKernel.setArg(1, getOutputs());
 
-
-            m_im2colBuffer = cl::Buffer(
-                m_sharedResources->getContext(), 
-                CL_MEM_READ_WRITE, 
-                im2colRows * im2colBatchCols * sizeof(float)
-            );
-
-            m_im2colKernel.setArg(0, m_im2colBuffer);
-
-            m_col2imBuffer = cl::Buffer(
-                m_sharedResources->getContext(), 
-                CL_MEM_READ_WRITE, 
-                im2colRows * im2colBatchCols * sizeof(float)
-            );
-            m_col2imKernel.setArg(0, m_col2imBuffer);
-
-            m_onesBuffer = cl::Buffer(
-                m_sharedResources->getContext(), 
-                CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, 
-                im2colBatchCols * sizeof(float),
-                std::vector<float>(im2colBatchCols, 1.0f).data()
-            );
-
             size_t requiredWorkspaceSize = std::max({
                 (size_t)getOutputChannels() * im2colBatchCols,
                 (size_t)getOutputChannels() * im2colRows
             });
-
-            m_clblastWorkspace = cl::Buffer(
-                m_sharedResources->getContext(),
-                CL_MEM_READ_WRITE,
-                std::max({ (size_t)getOutputChannels() * im2colBatchCols, (size_t)getOutputChannels() * im2colRows}) * sizeof(float)
-            );
-
-            m_clblastDeltaWorkspace = cl::Buffer(
-                m_sharedResources->getContext(),
-                CL_MEM_READ_WRITE,
-                im2colRows * im2colBatchCols * sizeof(float)
-            );
         }
-    private:
-        cl::Buffer m_im2colBuffer;
-        cl::Buffer m_col2imBuffer;
 
-        cl::Kernel m_im2colKernel;
-        cl::Kernel m_col2imKernel;
-
-        Utils::FilterDimensions m_filterDimensions;
-        Utils::StrideDimensions m_strideDimensions;
-        Utils::PaddingValues m_paddingValues;
-        Utils::PaddingType m_paddingType;
         
         size_t getInputChannels() const { return m_inputDimensions.getDimensions()[0]; }
         size_t getInputHeight() const { return m_inputDimensions.getDimensions()[1]; }
@@ -116,6 +70,19 @@ namespace Layers::Trainable {
         size_t getOutputHeight() const { return m_outputDimensions.getDimensions()[1]; }
         size_t getOutputWidth() const { return m_outputDimensions.getDimensions()[2]; }
 
+        Utils::PaddingValues getPaddingValues() const { return m_paddingValues; }
+        Utils::StrideDimensions getStrideDimensions() const { return m_strideDimensions; }
+        Utils::FilterDimensions getFilterDimensions() const { return m_filterDimensions; }
+    private:
+        cl::Kernel m_backpropDeltasKernel;
+        cl::Kernel m_computeWeightsGradientsKernel;
+        cl::Kernel m_computeBiasesGradientsKernel;
+
+        Utils::FilterDimensions m_filterDimensions;
+        Utils::StrideDimensions m_strideDimensions;
+        Utils::PaddingValues m_paddingValues;
+        Utils::PaddingType m_paddingType;
+        
         void allocateConvolutionalLayerBuffers(const size_t p_batchSize);
         Utils::Dimensions calculateOutputDimensions(const Utils::Dimensions& p_inputDimensions, const Utils::FilterDimensions& p_filterDimensions, const Utils::StrideDimensions& p_strideDimensions, Utils::PaddingType p_paddingType) const;
         Utils::Dimensions calculateOutputDimensions() const;
@@ -143,10 +110,7 @@ namespace Layers::Trainable {
         }
 
         void printConvolutionalLayer(const cl::CommandQueue& p_queue, const size_t p_batchSize) const {
-            size_t im2colSize = p_batchSize * getInputChannels() * m_filterDimensions.getHeight() * m_filterDimensions.getWidth() * getOutputHeight() * getOutputWidth();
             printTrainableLayer(p_queue, p_batchSize);
-            Utils::printCLBuffer(p_queue, m_im2colBuffer, im2colSize, "Im2Col Buffer");
-            Utils::printCLBuffer(p_queue, m_col2imBuffer, im2colSize, "Col2Im Buffer");
             std::cout << "Filter Dimensions: " << m_filterDimensions.toString() << "\n";
             std::cout << "Stride Dimensions: " << m_strideDimensions.toString() << "\n";
             std::cout << "Padding Values (Top, Bottom, Left, Right): (" 

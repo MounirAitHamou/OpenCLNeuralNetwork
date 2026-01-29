@@ -5,7 +5,7 @@
 
 namespace Utils {
     enum class NetworkType : unsigned int {
-        Local = 0,
+        Local = 0
     };
 
     inline NetworkType networkTypeFromUint(unsigned int p_val) {

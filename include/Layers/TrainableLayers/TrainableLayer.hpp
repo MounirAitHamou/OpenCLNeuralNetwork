@@ -26,41 +26,7 @@ namespace Layers::Trainable {
         virtual ~TrainableLayer() = default;
         
         virtual std::pair<cl::Event, cl::Event> computeGradients(const cl::CommandQueue& p_deltaToGradientQueue, cl::Event& p_backpropEvent, const cl::Buffer& p_inputs, const size_t p_batchSize) = 0;
-        std::pair<cl::Event, cl::Event> averageGradients(const cl::CommandQueue& p_concurrentQueue, const std::pair<cl::Event, cl::Event>& p_prevEvents, const size_t p_batchSize) {
-            if (m_batchSize < p_batchSize) setBatchSize(p_batchSize);
-            cl::Event weightsAvgEvent, biasesAvgEvent;
-
-            std::vector<cl::Event> weightsWaitList = { p_prevEvents.first};
-            m_averageWeightsGradientsKernel.setArg(1, (cl_uint)p_batchSize);
-            cl_int err = p_concurrentQueue.enqueueNDRangeKernel(
-                m_averageWeightsGradientsKernel,
-                cl::NullRange,
-                cl::NDRange(getWeightsSize()),
-                cl::NullRange,
-                &weightsWaitList,
-                &weightsAvgEvent
-            );
-            if (err != CL_SUCCESS) {
-                throw std::runtime_error("Failed to enqueue average weights gradients kernel. Error code: " + std::to_string(err));
-            }
-            
-            std::vector<cl::Event> biasesWaitList = { p_prevEvents.second};
-            
-            m_averageBiasesGradientsKernel.setArg(1, (cl_uint)p_batchSize);
-            err = p_concurrentQueue.enqueueNDRangeKernel(
-                m_averageBiasesGradientsKernel,
-                cl::NullRange,
-                cl::NDRange(getBiasesSize()),
-                cl::NullRange, 
-                &biasesWaitList,
-                &biasesAvgEvent
-            );
-            if (err != CL_SUCCESS) {
-                throw std::runtime_error("Failed to enqueue average biases gradients kernel. Error code: " + std::to_string(err));
-            }
-            
-            return {weightsAvgEvent, biasesAvgEvent};
-        }
+        
         
         bool isTrainable() const override { return true; }
         
@@ -70,14 +36,60 @@ namespace Layers::Trainable {
         
         cl::Buffer& getWeights() { return m_weights; }
         cl::Buffer& getBiases() { return m_biases; }
+
+        cl::Event& setWeights(const cl::CommandQueue& p_queue, const std::vector<cl::Event>& p_waitList, const std::vector<float>& p_weightsVec) {
+            if (p_weightsVec.size() != getWeightsSize()) {
+                throw std::invalid_argument("Input weights vector size does not match layer weights size.");
+            }
+
+            cl_int err;
+            cl::Event writeEvent;
+            err = p_queue.enqueueWriteBuffer(
+                m_weights,
+                NON_BLOCKING_READ,
+                NO_OFFSET,
+                p_weightsVec.size() * sizeof(float),
+                p_weightsVec.data(),
+                &p_waitList,
+                &writeEvent
+            );
+            if (err != CL_SUCCESS) {
+                throw std::runtime_error("Failed to enqueue write buffer for weights. Error code: " + std::to_string(err));
+            }
+            return writeEvent;
+        }
+        cl::Event& setBiases(const cl::CommandQueue& p_queue, const std::vector<cl::Event>& p_waitList, const std::vector<float>& p_biasesVec) {
+            if (p_biasesVec.size() != getBiasesSize()) {
+                throw std::invalid_argument("Input biases vector size does not match layer biases size.");
+            }
+
+            cl_int err;
+            cl::Event writeEvent;
+            err = p_queue.enqueueWriteBuffer(
+                m_biases,
+                NON_BLOCKING_READ,
+                NO_OFFSET,
+                p_biasesVec.size() * sizeof(float),
+                p_biasesVec.data(),
+                &p_waitList,
+                &writeEvent
+            );
+            if (err != CL_SUCCESS) {
+                throw std::runtime_error("Failed to enqueue write buffer for biases. Error code: " + std::to_string(err));
+            }
+            return writeEvent;
+        }
+
+        std::vector<float> getWeightsCPU(const cl::CommandQueue& p_queue) const {
+            return Utils::readCLBuffer(p_queue, m_weights, getWeightsSize());
+        }
+
+        std::vector<float> getBiasesCPU(const cl::CommandQueue& p_queue) const {
+            return Utils::readCLBuffer(p_queue, m_biases, getBiasesSize());
+        }
         
         cl::Buffer& getWeightsGradients() { return m_weightsGradients; }
         cl::Buffer& getBiasesGradients() { return m_biasesGradients; }
-        
-        cl::Buffer& getclblastWorkspace() { return m_clblastWorkspace; }
-        cl::Buffer& getclblastDeltaWorkspace() { return m_clblastDeltaWorkspace; }
-        
-        cl::Buffer& getOnesBuffer() { return m_onesBuffer; }
         
         virtual size_t getWeightsSize() const = 0;
         virtual size_t getBiasesSize() const = 0;
@@ -93,30 +105,12 @@ namespace Layers::Trainable {
         cl::Buffer m_biases;
         cl::Buffer m_weightsGradients;
         cl::Buffer m_biasesGradients;
-        cl::Buffer m_onesBuffer;
-        cl::Buffer m_clblastWorkspace;
-        cl::Buffer m_clblastDeltaWorkspace;
         
         cl::Kernel m_biasKernel;
-        cl::Kernel m_averageWeightsGradientsKernel;
-        cl::Kernel m_averageBiasesGradientsKernel;
         
         virtual void initializeWeightsAndBiases(std::mt19937& p_rng) = 0;
         
-        void setupTrainableKernels() {
-            cl_int err;
-            m_averageWeightsGradientsKernel = cl::Kernel(m_sharedResources->getProgram(), "averageGradients", &err);
-            if (err != CL_SUCCESS) {
-                throw std::runtime_error("Failed to create average weights gradients kernel. Error code: " + std::to_string(err));
-            }
-            m_averageWeightsGradientsKernel.setArg(0, m_weightsGradients);
-            
-            m_averageBiasesGradientsKernel = cl::Kernel(m_sharedResources->getProgram(), "averageGradients", &err);
-            if (err != CL_SUCCESS) {
-                throw std::runtime_error("Failed to create average biases gradients kernel. Error code: " + std::to_string(err));
-            }
-            m_averageBiasesGradientsKernel.setArg(0, m_biasesGradients);
-        }
+        void setupTrainableKernels() {}
         
         void saveTrainableLayer(const cl::CommandQueue& p_queue, H5::Group& p_layerGroup) const {
             saveLayer(p_layerGroup);

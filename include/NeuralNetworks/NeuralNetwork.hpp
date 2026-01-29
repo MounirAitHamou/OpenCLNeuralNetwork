@@ -14,10 +14,9 @@ class NeuralNetwork {
 public:
     NeuralNetwork() = default;
 
-    NeuralNetwork(Utils::OpenCLResources&& p_oclResources, const Utils::Dimensions& p_inputDimensions, Utils::LossFunctionType p_lossFunctionType, const size_t p_batchSize) 
+    NeuralNetwork(Utils::OpenCLResources&& p_oclResources, const Utils::Dimensions& p_inputDimensions, const size_t p_batchSize) 
     : m_batchSize(p_batchSize),
-      m_inputDimensions(p_inputDimensions),
-      m_lossFunctionType(p_lossFunctionType)
+      m_inputDimensions(p_inputDimensions)
       {
         m_oclResources = std::make_unique<Utils::OpenCLResources>(std::move(p_oclResources));
       }
@@ -26,7 +25,6 @@ public:
     : m_batchSize(p_batchSize) {
         m_oclResources = std::make_unique<Utils::OpenCLResources>(std::move(p_oclResources));
         m_inputDimensions = Utils::Dimensions(Utils::readVectorFromHDF5<size_t>(p_file, "inputDimensions"));
-        m_lossFunctionType = Utils::lossFunctionTypeFromUint(Utils::readValueFromHDF5<unsigned int>(p_file, "lossFunctionType"));
     }
 
 
@@ -45,9 +43,8 @@ public:
 protected:
     std::vector<std::unique_ptr<Layers::Layer>> m_layers;
     std::unique_ptr<Utils::OpenCLResources> m_oclResources;
+    std::unique_ptr<LossFunctions::LossFunction> m_lossFunction;
     
     size_t m_batchSize;
     Utils::Dimensions m_inputDimensions;
-
-    Utils::LossFunctionType m_lossFunctionType;
 };

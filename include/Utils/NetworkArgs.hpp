@@ -2,6 +2,7 @@
 
 #include "Utils/LayerArgs.hpp"
 #include "Utils/OptimizerArgs.hpp"
+#include "Utils/LossFunctionArgs.hpp"
 
 namespace Utils {
     struct NetworkArgs {
@@ -10,32 +11,30 @@ namespace Utils {
         Dimensions m_initialInputDimensions;
         std::vector<std::unique_ptr<LayerArgs>> m_layersArguments;
         std::unique_ptr<OptimizerArgs> m_optimizerArguments;
-        LossFunctionType m_lossFunctionType;
+        std::unique_ptr<LossFunctionArgs> m_lossFunctionArguments;
 
     public:
         NetworkArgs()
-            : m_initialInputDimensions(Dimensions({1})), m_lossFunctionType(LossFunctionType::MeanSquaredError) {}
+            : m_initialInputDimensions(Dimensions({1})) {}
 
-        NetworkArgs(Dimensions p_initialInputDimensions,
-                    LossFunctionType p_lossFunctionType = LossFunctionType::MeanSquaredError)
-            : m_initialInputDimensions(p_initialInputDimensions),
-            m_lossFunctionType(p_lossFunctionType) {}
+        NetworkArgs(Dimensions p_initialInputDimensions)
+            : m_initialInputDimensions(p_initialInputDimensions) {}
 
         NetworkArgs(Dimensions p_initialInputDimensions,
                     std::vector<std::unique_ptr<LayerArgs>>&& p_layersArguments,
                     std::unique_ptr<OptimizerArgs>&& p_optimizerArguments,
-                    LossFunctionType p_lossFunctionType = LossFunctionType::MeanSquaredError)
+                    std::unique_ptr<LossFunctionArgs>&& p_lossFunctionArguments)
             :   m_initialInputDimensions(p_initialInputDimensions),
                 m_layersArguments(std::move(p_layersArguments)),
                 m_optimizerArguments(std::move(p_optimizerArguments)),
-                m_lossFunctionType(p_lossFunctionType) {}
+                m_lossFunctionArguments(std::move(p_lossFunctionArguments)) {}
 
         NetworkArgs(Dimensions p_initialInputDimensions,
                     std::vector<std::unique_ptr<LayerArgs>>&& p_layersArguments,
-                    LossFunctionType p_lossFunctionType = LossFunctionType::MeanSquaredError)
+                    std::unique_ptr<LossFunctionArgs>&& p_lossFunctionArguments)
             :   m_initialInputDimensions(p_initialInputDimensions),
                 m_layersArguments(std::move(p_layersArguments)), 
-                m_lossFunctionType(p_lossFunctionType) {}
+                m_lossFunctionArguments(std::move(p_lossFunctionArguments)) {}
 
         const Dimensions& getInitialInputDimensions() const {
             return m_initialInputDimensions;
@@ -49,8 +48,8 @@ namespace Utils {
             return m_optimizerArguments;
         }
 
-        const LossFunctionType getLossFunctionType() const {
-            return m_lossFunctionType;
+        const std::unique_ptr<LossFunctionArgs>& getLossFunctionArguments() const {
+            return m_lossFunctionArguments;
         }
     };
 
@@ -58,6 +57,6 @@ namespace Utils {
         const Dimensions& p_initialInputDimensions,
         std::vector<std::unique_ptr<LayerArgs>> p_layerArguments,
         std::unique_ptr<OptimizerArgs> p_optimizerArguments,
-        LossFunctionType p_lossFunctionType
+        std::unique_ptr<LossFunctionArgs> p_lossFunctionArguments
     );
 }

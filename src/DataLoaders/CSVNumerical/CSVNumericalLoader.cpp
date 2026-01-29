@@ -1,7 +1,12 @@
 #include "DataLoaders/CSVNumerical/CSVNumericalLoader.hpp"
 namespace DataLoaders {
-    CSVNumericalLoader::CSVNumericalLoader(std::shared_ptr<Utils::SharedResources> p_sharedResources, const size_t p_batchSize)
-        : DataLoader(p_sharedResources, p_batchSize) {}
+    CSVNumericalLoader::CSVNumericalLoader(std::shared_ptr<Utils::SharedResources> p_sharedResources, 
+                                           const size_t p_batchSize,
+                                           std::vector<std::string> p_inputColumns,
+                                           std::vector<std::string> p_targetColumns)
+        : DataLoader(p_sharedResources, p_batchSize),
+          m_inputColumns(std::move(p_inputColumns)),
+          m_targetColumns(std::move(p_targetColumns)) {}
 
     Utils::Batch CSVNumericalLoader::getBatch(size_t p_batchStart, size_t p_batchSize) const {
         if (!m_currentActiveIndices || m_currentActiveIndices == nullptr) {
@@ -45,17 +50,14 @@ namespace DataLoaders {
         return Utils::Batch(inputsBuffer, targetsBuffer, inputs, targets, batchActualSize, Utils::Dimensions({m_numInputFeatures}), Utils::Dimensions({m_numTargetFeatures}));
     }
 
-    void CSVNumericalLoader::loadData(const std::string& p_source,
-                                        std::vector<std::string> p_inputColumns,
-                                        std::vector<std::string> p_targetColumns) {
-        if (p_inputColumns.empty() || p_targetColumns.empty()) {
+    void CSVNumericalLoader::loadData(const std::string& p_source) {
+        if (m_inputColumns.empty() || m_targetColumns.empty()) {
             throw std::invalid_argument("Input and target columns must be specified.");
         }
 
-        m_filePath = p_source;
-        std::ifstream file(m_filePath);
+        std::ifstream file(p_source);
         if (!file) {
-            throw std::runtime_error("Failed to open CSV file: " + m_filePath);
+            throw std::runtime_error("Failed to open CSV file: " + p_source);
         }
         
         m_allData.clear();
@@ -66,7 +68,7 @@ namespace DataLoaders {
         while (std::getline(file, line)) {
             if (!headerProcessed) {
                 headerProcessed = true;
-                processHeader(line, p_inputColumns, p_targetColumns);
+                processHeader(line);
                 continue;
             }
 
@@ -83,7 +85,7 @@ namespace DataLoaders {
         }
 
         if (m_allData.empty()) {
-            throw std::runtime_error("No data loaded from CSV file: " + m_filePath +
+            throw std::runtime_error("No data loaded from CSV file: " + p_source +
                                     ". File might be empty or malformed.");
         }
 
@@ -116,15 +118,11 @@ namespace DataLoaders {
         activateTrainPartition();
     }
 
-    void CSVNumericalLoader::shuffleCurrentPartition() {
+    void CSVNumericalLoader::shuffleCurrentPartition(std::mt19937& p_rng) {
         if (!m_currentActiveIndices) {
             throw std::runtime_error("No data partition is active to shuffle. Call activateTrainPartition, activateValidationPartition, or activateTestPartition first.");
         }
-
-        std::random_device randomDevice;
-        std::mt19937 g(randomDevice());
-
-        std::shuffle(m_currentActiveIndices->begin(), m_currentActiveIndices->end(), g);
+        std::shuffle(m_currentActiveIndices->begin(), m_currentActiveIndices->end(), p_rng);
     }
 
     const size_t CSVNumericalLoader::getTotalSamples() const {
@@ -182,9 +180,7 @@ namespace DataLoaders {
         return row;
     }
 
-    void CSVNumericalLoader::processHeader(const std::string& p_headerLine,
-                        std::vector<std::string> p_inputColumns,
-                        std::vector<std::string> p_targetColumns) {
+    void CSVNumericalLoader::processHeader(const std::string& p_headerLine) {
         m_header.clear();
         m_inputColumnsIndices.clear();
         m_targetColumnsIndices.clear();
@@ -195,10 +191,10 @@ namespace DataLoaders {
 
         while (std::getline(ss, column, ',')) {
             m_header.push_back(column);
-            if (std::find(p_inputColumns.begin(), p_inputColumns.end(), column) != p_inputColumns.end()) {
+            if (std::find(m_inputColumns.begin(), m_inputColumns.end(), column) != m_inputColumns.end()) {
                 m_inputColumnsIndices.push_back(index);
             }
-            if (std::find(p_targetColumns.begin(), p_targetColumns.end(), column) != p_targetColumns.end()) {
+            if (std::find(m_targetColumns.begin(), m_targetColumns.end(), column) != m_targetColumns.end()) {
                 m_targetColumnsIndices.push_back(index);
             }
             index++;

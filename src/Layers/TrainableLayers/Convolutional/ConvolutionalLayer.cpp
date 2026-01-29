@@ -43,55 +43,36 @@ namespace Layers::Trainable {
     cl::Event ConvolutionalLayer::runForward(const cl::CommandQueue& p_forwardBackpropQueue,
                                             const cl::Buffer& p_inputs,
                                             const size_t p_batchSize) {
-        if (m_batchSize < p_batchSize) setBatchSize(p_batchSize);
-        m_im2colKernel.setArg(12, p_inputs);
-
-        size_t im2colRows = (size_t)getInputChannels() * m_filterDimensions.getHeight() * m_filterDimensions.getWidth();
-        size_t im2colCols = (size_t)getOutputHeight() * getOutputWidth();
-
-        cl_int err = p_forwardBackpropQueue.enqueueNDRangeKernel(
-            m_im2colKernel, 
-            cl::NullRange, 
-            cl::NDRange(im2colRows, im2colCols, p_batchSize),
-            cl::NullRange);
-
-        if (err != CL_SUCCESS) {
-            throw std::runtime_error("Failed to enqueue im2col kernel.");
-        }
-
         cl_command_queue raw_queue = p_forwardBackpropQueue.get();
 
-        size_t N = im2colCols * p_batchSize;
-
-        auto status = clblast::Gemm<float>(
-            clblast::Layout::kRowMajor,
-            clblast::Transpose::kNo,
-            clblast::Transpose::kNo,
+        auto status = clblast::Convgemm<float>(
+            clblast::KernelMode::kCrossCorrelation,
+            getInputChannels(), getInputHeight(), getInputWidth(),
+            m_filterDimensions.getHeight(), m_filterDimensions.getWidth(),
+            m_paddingValues.getTop(), m_paddingValues.getLeft(),
+            m_strideDimensions.getHeight(), m_strideDimensions.getWidth(),
+            1, 1,
             getOutputChannels(),
-            N,
-            im2colRows,
-            NO_SCALAR,
-            getWeights()(), NO_OFFSET, im2colRows,
-            m_im2colBuffer(), NO_OFFSET, N,
-            CLEAR_C,
-            getOutputs()(), NO_OFFSET, N,
-            &raw_queue, nullptr,
-            m_clblastWorkspace()
+            p_batchSize,
+            p_inputs(), 0,
+            getWeights()(), 0,
+            getOutputs()(), 0,
+            &raw_queue, nullptr
         );
 
         if (status != clblast::StatusCode::kSuccess) {
-            std::cerr << "Forward CLBlast GEMM failed: " << static_cast<int>(status) << std::endl;
-            throw std::runtime_error("CLBlast GEMM failed");
+            throw std::runtime_error("CLBlast Convgemm failed with status: " + std::to_string(static_cast<int>(status)));
         }
 
         cl::Event returnEvent;
-
-        err = p_forwardBackpropQueue.enqueueNDRangeKernel(
-            m_biasKernel,
-            cl::NullRange,
-            cl::NDRange(getTotalOutputElements(), p_batchSize), 
-            cl::NullRange,
-            nullptr,
+        cl::NDRange globalSize(getOutputChannels(), getOutputHeight() * getOutputWidth(), p_batchSize);
+        
+        cl_int err = p_forwardBackpropQueue.enqueueNDRangeKernel(
+            m_biasKernel, 
+            cl::NullRange, 
+            globalSize, 
+            cl::NullRange, 
+            nullptr, 
             &returnEvent
         );
 
@@ -102,117 +83,78 @@ namespace Layers::Trainable {
         return returnEvent;
     }
 
-    cl::Event ConvolutionalLayer::backpropDeltas(const cl::CommandQueue& p_forwardBackpropQueue, 
-                                            const cl::Buffer& p_previousLayerDeltas,
-                                            const size_t p_batchSize) {
-        if (m_batchSize < p_batchSize) setBatchSize(p_batchSize);
+    cl::Event ConvolutionalLayer::backpropDeltas(
+        const cl::CommandQueue& p_forwardBackpropQueue,
+        const cl::Buffer& p_previousLayerDeltas,
+        size_t p_batchSize
+    ) {
+        size_t globalWidth = (getInputWidth() + 1) / 2; 
 
-        size_t M = getOutputChannels();
-        size_t N = getOutputHeight() * getOutputWidth() * p_batchSize;
-        size_t K = getInputChannels() * m_filterDimensions.getHeight() * m_filterDimensions.getWidth();
-
-        cl_command_queue raw_queue = p_forwardBackpropQueue.get();
-        
-        auto status = clblast::Gemm<float>(
-            clblast::Layout::kRowMajor,
-            clblast::Transpose::kYes,
-            clblast::Transpose::kNo,
-            K, N, M,
-            NO_SCALAR,
-            getWeights()(), NO_OFFSET, K,
-            getDeltas()(), NO_OFFSET, N,
-            CLEAR_C,
-            m_col2imBuffer(), NO_OFFSET, N,
-            &raw_queue, nullptr,
-            m_clblastDeltaWorkspace()
+        cl::NDRange globalSize(
+            globalWidth, 
+            (size_t)getInputHeight(), 
+            (size_t)getInputChannels() * p_batchSize
         );
 
-        if (status != clblast::StatusCode::kSuccess) {
-            std::cerr << "Backprop Delta CLBlast GEMM failed: " << static_cast<int>(status) << std::endl;
-            throw std::runtime_error("CLBlast GEMM failed");
-        }
+        m_backpropDeltasKernel.setArg(14, p_previousLayerDeltas);
         
-        m_col2imKernel.setArg(12, p_previousLayerDeltas);
-
-        cl::Event returnEvent;
-
-        cl_int err = p_forwardBackpropQueue.enqueueNDRangeKernel(
-                m_col2imKernel, 
-                cl::NullRange,
-                cl::NDRange(m_inputDimensions.getTotalElements(), p_batchSize),
-                cl::NullRange,
-                nullptr,
-                &returnEvent
+        cl::Event executionEvent;
+        p_forwardBackpropQueue.enqueueNDRangeKernel(
+            m_backpropDeltasKernel,
+            cl::NullRange,
+            globalSize,
+            cl::NullRange,
+            nullptr,
+            &executionEvent
         );
 
-        if (err != CL_SUCCESS) {
-            throw std::runtime_error("Failed to enqueue col2im kernel.");
-        }
-
-        return returnEvent;
+        return executionEvent;
     }
 
-    std::pair<cl::Event, cl::Event> ConvolutionalLayer::computeGradients(const cl::CommandQueue& p_deltaToGradientQueue, 
-                                                                            cl::Event& p_backpropEvent,
-                                                                            const cl::Buffer& p_inputs,
-                                                                            const size_t p_batchSize) {
+    std::pair<cl::Event, cl::Event> ConvolutionalLayer::computeGradients(
+        const cl::CommandQueue& p_queue,
+        cl::Event& p_backpropEvent,
+        const cl::Buffer& p_inputs,
+        const size_t p_batchSize
+    ) {
         if (m_batchSize < p_batchSize) setBatchSize(p_batchSize);
-        std::vector<cl::Event> deltaBackPropWaitList = { p_backpropEvent };
-        p_deltaToGradientQueue.enqueueBarrierWithWaitList(&deltaBackPropWaitList);
 
-        size_t im2colRows = (size_t)getInputChannels() * m_filterDimensions.getHeight() * m_filterDimensions.getWidth();
-        size_t im2colCols = (size_t)getOutputHeight() * getOutputWidth();
-
-        cl_event raw_gemm_event = nullptr;
-        cl_command_queue raw_queue = p_deltaToGradientQueue.get();
-        
-        auto status = clblast::Gemm<float>(
-            clblast::Layout::kRowMajor,
-            clblast::Transpose::kNo,
-            clblast::Transpose::kYes,
-            getOutputChannels(),
-            im2colRows,
-            p_batchSize * im2colCols,
-            NO_SCALAR,
-            getDeltas()(), NO_OFFSET, p_batchSize * im2colCols,
-            m_im2colBuffer(), NO_OFFSET, p_batchSize * im2colCols,
-            CLEAR_C,
-            getWeightsGradients()(), NO_OFFSET, im2colRows,
-            &raw_queue, &raw_gemm_event,
-            m_clblastWorkspace()
-        );
-
-        if (status != clblast::StatusCode::kSuccess) {
-            std::cerr << "Weights Gradients CLBlast GEMM failed: " << static_cast<int>(status) << std::endl;
-            throw std::runtime_error("CLBlast GEMM failed");
+        std::vector<cl::Event> waitList;
+        if (p_backpropEvent() != nullptr) {
+            waitList.push_back(p_backpropEvent);
         }
 
-        cl::Event gemmEvent(raw_gemm_event, true);
-
-        cl_event raw_gemv_event = nullptr;
-        
-        status = clblast::Gemv<float>(
-            clblast::Layout::kRowMajor,
-            clblast::Transpose::kNo,
-            getOutputChannels(),
-            p_batchSize * im2colCols,
-            NO_SCALAR,
-            getDeltas()(), NO_OFFSET, p_batchSize * im2colCols,
-            m_onesBuffer(), NO_OFFSET, 1,
-            CLEAR_C,
-            getBiasesGradients()(), NO_OFFSET, 1,
-            &raw_queue,
-            &raw_gemv_event
+        cl::NDRange globalSize(
+            (size_t)m_filterDimensions.getWidth(), 
+            (size_t)m_filterDimensions.getHeight(), 
+            (size_t)getInputChannels() * getOutputChannels()
         );
 
-        if (status != clblast::StatusCode::kSuccess) {
-            std::cerr << "Bias Gradients CLBlast GEMM failed: " << static_cast<int>(status) << std::endl;
-            throw std::runtime_error("CLBlast GEMV failed");
-        }
+        m_computeWeightsGradientsKernel.setArg(14, p_inputs);
+        m_computeWeightsGradientsKernel.setArg(15, (int)p_batchSize);
 
-        cl::Event gemvEvent(raw_gemv_event, true);
+        cl::Event weightsEvent;
+        p_queue.enqueueNDRangeKernel(
+            m_computeWeightsGradientsKernel,
+            cl::NullRange,
+            globalSize,
+            cl::NullRange,
+            &waitList,
+            &weightsEvent
+        );
 
-        return { gemmEvent, gemvEvent };
+        cl::NDRange biasGlobalSize(getOutputChannels());
+        cl::Event biasEvent;
+        m_computeBiasesGradientsKernel.setArg(5, (cl_int)p_batchSize);
+        p_queue.enqueueNDRangeKernel(
+            m_computeBiasesGradientsKernel,
+            cl::NullRange,
+            biasGlobalSize,
+            cl::NullRange,
+            &waitList,
+            &biasEvent
+        );
+        return { weightsEvent, biasEvent  };
     }
 
     void ConvolutionalLayer::allocateConvolutionalLayerBuffers(const size_t p_batchSize) {
@@ -232,41 +174,10 @@ namespace Layers::Trainable {
             (getBiasesSize()) * sizeof(float)
         );
         
-        m_im2colBuffer = cl::Buffer(
-            m_sharedResources->getContext(), 
-            CL_MEM_READ_WRITE, 
-            im2colRows * im2colBatchCols * sizeof(float)
-        );
-
-        m_col2imBuffer = cl::Buffer(
-            m_sharedResources->getContext(), 
-            CL_MEM_READ_WRITE, 
-            im2colRows * im2colBatchCols * sizeof(float)
-        );
-        
-        m_onesBuffer = cl::Buffer(
-            m_sharedResources->getContext(), 
-            CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, 
-            im2colBatchCols * sizeof(float),
-            std::vector<float>(im2colBatchCols, 1.0f).data()
-        );
-
         size_t requiredWorkspaceSize = std::max({
             (size_t)getOutputChannels() * im2colBatchCols,
             (size_t)getOutputChannels() * im2colRows
         });
-
-        m_clblastWorkspace = cl::Buffer(
-            m_sharedResources->getContext(),
-            CL_MEM_READ_WRITE,
-            std::max({ (size_t)getOutputChannels() * im2colBatchCols, (size_t)getOutputChannels() * im2colRows}) * sizeof(float)
-        );
-
-        m_clblastDeltaWorkspace = cl::Buffer(
-            m_sharedResources->getContext(),
-            CL_MEM_READ_WRITE,
-            im2colRows * im2colBatchCols * sizeof(float)
-        );
     }
 
     Utils::Dimensions ConvolutionalLayer::calculateOutputDimensions(const Utils::Dimensions& p_inputDimensions, const Utils::FilterDimensions& p_filterDimensions, const Utils::StrideDimensions& p_strideDimensions, Utils::PaddingType p_paddingType) const {
@@ -418,48 +329,65 @@ namespace Layers::Trainable {
         setupTrainableKernels();
         cl_int err;
 
-        m_im2colKernel = cl::Kernel(m_sharedResources->getProgram(), "convolutionalIm2col", &err);
-        if (err != CL_SUCCESS) {
-            throw std::runtime_error("Failed to create im2col kernel");
-        }
-        m_im2colKernel.setArg(0, m_im2colBuffer);
-        m_im2colKernel.setArg(1, (cl_uint)getInputHeight());
-        m_im2colKernel.setArg(2, (cl_uint)getInputWidth());
-        m_im2colKernel.setArg(3, (cl_uint)getInputChannels());
-        m_im2colKernel.setArg(4, (cl_uint)m_filterDimensions.getHeight());
-        m_im2colKernel.setArg(5, (cl_uint)m_filterDimensions.getWidth());
-        m_im2colKernel.setArg(6, (cl_uint)m_strideDimensions.getHeight());
-        m_im2colKernel.setArg(7, (cl_uint)m_strideDimensions.getWidth());
-        m_im2colKernel.setArg(8, (cl_uint)m_paddingValues.getTop());
-        m_im2colKernel.setArg(9, (cl_uint)m_paddingValues.getLeft());
-        m_im2colKernel.setArg(10, (cl_uint)getOutputHeight());
-        m_im2colKernel.setArg(11, (cl_uint)getOutputWidth());
-
         m_biasKernel = cl::Kernel(m_sharedResources->getProgram(), "convolutionalBias", &err);
         if (err != CL_SUCCESS) {
             throw std::runtime_error("Failed to create convBias kernel");
         }
         m_biasKernel.setArg(0, getBiases());
         m_biasKernel.setArg(1, getOutputs());
-        m_biasKernel.setArg(2, (cl_uint)getTotalOutputElements());
-        m_biasKernel.setArg(3, (cl_uint)getOutputChannels());
+        m_biasKernel.setArg(2, (int)getOutputHeight());
+        m_biasKernel.setArg(3, (int)getOutputWidth());
+        m_biasKernel.setArg(4, (int)getOutputChannels());
 
-        m_col2imKernel = cl::Kernel(m_sharedResources->getProgram(), "convolutionalCol2im", &err);
+        m_backpropDeltasKernel = cl::Kernel(m_sharedResources->getProgram(), "convolutionalBackpropDeltas", &err);
+
         if (err != CL_SUCCESS) {
-            throw std::runtime_error("Failed to create col2im kernel");
+            throw std::runtime_error("Failed to create backprop kernel.");
         }
-        m_col2imKernel.setArg(0, m_col2imBuffer);
-        m_col2imKernel.setArg(1, (cl_uint)getInputHeight());
-        m_col2imKernel.setArg(2, (cl_uint)getInputWidth());
-        m_col2imKernel.setArg(3, (cl_uint)getInputChannels());
-        m_col2imKernel.setArg(4, (cl_uint)m_filterDimensions.getHeight());
-        m_col2imKernel.setArg(5, (cl_uint)m_filterDimensions.getWidth());
-        m_col2imKernel.setArg(6, (cl_uint)m_strideDimensions.getHeight());
-        m_col2imKernel.setArg(7, (cl_uint)m_strideDimensions.getWidth());
-        m_col2imKernel.setArg(8, (cl_uint)m_paddingValues.getTop());
-        m_col2imKernel.setArg(9, (cl_uint)m_paddingValues.getLeft());
-        m_col2imKernel.setArg(10, (cl_uint)getOutputHeight());
-        m_col2imKernel.setArg(11, (cl_uint)getOutputWidth());
+        m_backpropDeltasKernel.setArg(0, getWeights());
+        m_backpropDeltasKernel.setArg(1, getDeltas());
+        m_backpropDeltasKernel.setArg(2, (cl_int)getInputHeight());
+        m_backpropDeltasKernel.setArg(3, (cl_int)getInputWidth());
+        m_backpropDeltasKernel.setArg(4, (cl_int)getOutputHeight());
+        m_backpropDeltasKernel.setArg(5, (cl_int)getOutputWidth());
+        m_backpropDeltasKernel.setArg(6, (cl_int)m_filterDimensions.getHeight());
+        m_backpropDeltasKernel.setArg(7, (cl_int)m_filterDimensions.getWidth());
+        m_backpropDeltasKernel.setArg(8, (cl_int)m_strideDimensions.getHeight());
+        m_backpropDeltasKernel.setArg(9, (cl_int)m_strideDimensions.getWidth());
+        m_backpropDeltasKernel.setArg(10, (cl_int)m_paddingValues.getTop());
+        m_backpropDeltasKernel.setArg(11, (cl_int)m_paddingValues.getLeft());
+        m_backpropDeltasKernel.setArg(12, (cl_int)getInputChannels());
+        m_backpropDeltasKernel.setArg(13, (cl_int)getOutputChannels());
+
+        m_computeWeightsGradientsKernel = cl::Kernel(m_sharedResources->getProgram(), "convolutionalComputeWeightsGradients", &err);
+        if (err != CL_SUCCESS) {
+            throw std::runtime_error("Failed to create compute weights gradients kernel.");
+        }
+
+        m_computeWeightsGradientsKernel.setArg(0,  getDeltas());
+        m_computeWeightsGradientsKernel.setArg(1,  getWeightsGradients());
+        m_computeWeightsGradientsKernel.setArg(2,  (int)getInputChannels());
+        m_computeWeightsGradientsKernel.setArg(3,  (int)getInputHeight());
+        m_computeWeightsGradientsKernel.setArg(4,  (int)getInputWidth());
+        m_computeWeightsGradientsKernel.setArg(5,  (int)getOutputChannels());
+        m_computeWeightsGradientsKernel.setArg(6,  (int)getOutputHeight());
+        m_computeWeightsGradientsKernel.setArg(7,  (int)getOutputWidth());
+        m_computeWeightsGradientsKernel.setArg(8, (int)m_filterDimensions.getHeight());
+        m_computeWeightsGradientsKernel.setArg(9, (int)m_filterDimensions.getWidth());
+        m_computeWeightsGradientsKernel.setArg(10, (int)m_strideDimensions.getHeight());
+        m_computeWeightsGradientsKernel.setArg(11, (int)m_strideDimensions.getWidth());
+        m_computeWeightsGradientsKernel.setArg(12, (int)m_paddingValues.getTop());
+        m_computeWeightsGradientsKernel.setArg(13, (int)m_paddingValues.getLeft());
+
+        m_computeBiasesGradientsKernel = cl::Kernel(m_sharedResources->getProgram(), "convolutionalComputeBiasesGradients", &err);
+        if (err != CL_SUCCESS) {
+            throw std::runtime_error("Failed to create compute biases gradients kernel.");
+        }
+        m_computeBiasesGradientsKernel.setArg(0, getDeltas());
+        m_computeBiasesGradientsKernel.setArg(1, getBiasesGradients());
+        m_computeBiasesGradientsKernel.setArg(2, (int)getOutputChannels());
+        m_computeBiasesGradientsKernel.setArg(3, (int)getOutputHeight());
+        m_computeBiasesGradientsKernel.setArg(4, (int)getOutputWidth());
     }
 
     Utils::Dimensions ConvolutionalLayer::validateInputDimensions(

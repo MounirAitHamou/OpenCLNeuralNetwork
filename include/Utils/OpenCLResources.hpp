@@ -70,11 +70,13 @@ namespace Utils {
             return m_concurrentQueue;
         }
 
-        static OpenCLResources createOpenCLResources(const std::string& p_kernelsPath = "kernels");
+        static OpenCLResources createOpenCLResources(const std::string& p_kernelsPath = KERNELS_DIR);
 
         static OpenCLResources createOpenCLResources(std::shared_ptr<SharedResources> p_sharedResources);
 
         void print() const;
+
+        bool valid() const;
 
     private:
         std::shared_ptr<SharedResources> m_sharedResources;

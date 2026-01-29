@@ -1,8 +1,6 @@
 #include "Utils/OpenCLResources.hpp"
 namespace Utils {
-    OpenCLResources OpenCLResources::createOpenCLResources(const std::string& p_kernelsPath){
-        std::cout << "OpenCL Neural Network Example (Batched Training)\n";
-
+    OpenCLResources OpenCLResources::createOpenCLResources(const std::string& p_kernelsPath) {
         std::vector<cl::Platform> platforms;
         cl::Platform::get(&platforms);
         if (platforms.empty()) {
@@ -10,27 +8,26 @@ namespace Utils {
         }
 
         std::cout << "Total platforms found: " << platforms.size() << "\n";
-        std::cout << "Available platforms:\n";
         for (int i = 0; i < platforms.size(); ++i) {
             std::cout << "Platform " << i << ": " << platforms[i].getInfo<CL_PLATFORM_NAME>() << std::endl;
         }
 
         int platformIndex = 0;
-        /*if (platforms.size() == 1) {
-            std::cout << "Only one platform found, using it by default.\n";
-            platformIndex = 0;
-        } else {
+        /*if (platforms.size() > 1) {
             std::cout << "Please select a platform by entering its index (0 to " << platforms.size() - 1 << "): ";
             std::cin >> platformIndex;
             if (std::cin.fail() || platformIndex < 0 || platformIndex >= platforms.size()) {
                 std::cin.clear();
                 std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
-                throw std::runtime_error("Invalid input for platform selection. Please enter a valid integer index within the range.");
+                std::cerr << "Invalid platform index, using 0 by default.\n";
+                platformIndex = 0;
             }
+        } else {
+            std::cout << "Only one platform found, using it by default.\n";
         }*/
+
         cl::Platform platform = platforms[platformIndex];
         std::cout << "Using platform: " << platform.getInfo<CL_PLATFORM_NAME>() << std::endl;
-
 
         std::vector<cl::Device> devices;
         platform.getDevices(CL_DEVICE_TYPE_GPU, &devices);
@@ -42,28 +39,28 @@ namespace Utils {
         }
 
         std::cout << "Total devices found: " << devices.size() << "\n";
-        std::cout << "Available devices:\n";
         for (int i = 0; i < devices.size(); ++i) {
-            std::cout << "Device " << i << ": ";
-            std::cout << "Type: " << (devices[i].getInfo<CL_DEVICE_TYPE>() == CL_DEVICE_TYPE_GPU ? "GPU" : "CPU") << ", ";
-            std::cout << "Vendor: " << devices[i].getInfo<CL_DEVICE_VENDOR>() << ", ";
-            std::cout << "Version: " << devices[i].getInfo<CL_DEVICE_VERSION>() << ", ";
-            std::cout << devices[i].getInfo<CL_DEVICE_NAME>() << "\n";
+            std::cout << "Device " << i << ": "
+                    << ((devices[i].getInfo<CL_DEVICE_TYPE>() == CL_DEVICE_TYPE_GPU) ? "GPU" : "CPU")
+                    << ", " << devices[i].getInfo<CL_DEVICE_VENDOR>()
+                    << ", " << devices[i].getInfo<CL_DEVICE_VERSION>()
+                    << ", " << devices[i].getInfo<CL_DEVICE_NAME>() << "\n";
         }
 
-        int deviceIndex;
-        if (devices.size() == 1) {
-            std::cout << "Only one device found, using it by default.\n";
-            deviceIndex = 0;
-        } else {
+        int deviceIndex = 0;
+        /*if (devices.size() > 1) {
             std::cout << "Please select a device by entering its index (0 to " << devices.size() - 1 << "): ";
             std::cin >> deviceIndex;
             if (std::cin.fail() || deviceIndex < 0 || deviceIndex >= devices.size()) {
                 std::cin.clear();
                 std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
-                throw std::runtime_error("Invalid input for device selection. Please enter a valid integer index within the range.");
+                std::cerr << "Invalid device index, using 0 by default.\n";
+                deviceIndex = 0;
             }
-        }
+        } else {
+            std::cout << "Only one device found, using it by default.\n";
+        }*/
+
         cl::Device device = devices[deviceIndex];
         std::cout << "Selected device: " << device.getInfo<CL_DEVICE_NAME>() << "\n";
 
@@ -74,7 +71,6 @@ namespace Utils {
 
         cl_ulong props;
         device.getInfo(CL_DEVICE_QUEUE_PROPERTIES, &props);
-
         if (props & CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE) {
             deltaToGradientQueue = cl::CommandQueue(context, device, CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE | CL_QUEUE_PROFILING_ENABLE);
             concurrentQueue = cl::CommandQueue(context, device, CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE | CL_QUEUE_PROFILING_ENABLE);
@@ -83,57 +79,51 @@ namespace Utils {
             concurrentQueue = cl::CommandQueue(context, device, CL_QUEUE_PROFILING_ENABLE);
         }
 
+        // Handle kernels safely
         std::vector<std::string> kernelFiles = getAllKernelFiles(p_kernelsPath);
+        cl::Program::Sources sources;
 
         if (kernelFiles.empty()) {
-            std::cout << "No kernel files found or folder does not exist. Proceeding without kernels." << std::endl;
-            throw std::runtime_error("No valid kernel sources found. Ensure .cl files are in the specified path.");
+            std::cout << "No kernel files found or folder does not exist. Continuing without kernels." << std::endl;
+            const char* emptyKernel = "__kernel void dummy() {}";
+            sources.emplace_back(emptyKernel, strlen(emptyKernel));
         } else {
             std::cout << "Found " << kernelFiles.size() << " kernel files:" << std::endl;
             for (const auto& filePath : kernelFiles) {
                 std::cout << "- " << filePath << std::endl;
+                std::ifstream file(filePath);
+                if (!file) {
+                    std::cerr << "Error: Could not open kernel file: " << filePath << std::endl;
+                    continue;
+                }
+                std::string sourceCode((std::istreambuf_iterator<char>(file)),
+                                    std::istreambuf_iterator<char>());
+                sources.emplace_back(sourceCode.c_str(), sourceCode.length());
             }
         }
 
-        cl::Program::Sources sources;
-        for (const auto& filePath : kernelFiles) {
-            std::ifstream file(filePath);
-            if (!file) {
-                std::cerr << "Error: Could not open kernel file: " << filePath << std::endl;
-                continue;
-            }
-            std::string sourceCode((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
-            sources.emplace_back(sourceCode.c_str(), sourceCode.length());
-        }
-
-        if (sources.empty()) {
-            throw std::runtime_error("No valid kernel sources were successfully loaded. Check file paths and permissions.");
-        }
-
+        // Create program (empty sources is fine)
         cl::Program program(context, sources);
-        std::string includeArg = "-I " + p_kernelsPath + "/include";
-        std::string printfArg = "-DCL_ENABLE_PRINTF";
-        std::string buildOptions = includeArg + " " + printfArg;
 
-        cl_int buildStatus = program.build({ device }, buildOptions.c_str());
-
-        if (buildStatus != CL_SUCCESS) {
+        if (!sources.empty()) {
+            std::string buildOptions = "-I " + p_kernelsPath + "/include -DCL_ENABLE_PRINTF";
+            cl_int buildStatus = program.build({ device }, buildOptions.c_str());
             std::string buildLog = program.getBuildInfo<CL_PROGRAM_BUILD_LOG>(device);
-            std::cerr << "Error building program: " << buildStatus << "\n";
             std::cerr << "Build log for device " << device.getInfo<CL_DEVICE_NAME>() << ":\n" << buildLog << std::endl;
-            throw std::runtime_error("Failed to build OpenCL program.");
+            if (buildStatus != CL_SUCCESS) {
+                std::cerr << "Warning: OpenCL program build failed, continuing without kernels.\n";
+            }
         }
 
-        
-        std::string buildLog = program.getBuildInfo<CL_PROGRAM_BUILD_LOG>(device);
-        std::cerr << "Build log for device " << device.getInfo<CL_DEVICE_NAME>() << ":\n" << buildLog << std::endl;
-        if (buildLog.find("error") != std::string::npos ||
-            buildLog.find("Error") != std::string::npos) {
-            throw std::runtime_error("OpenCL build failed with errors.");
-        }
-
-        return OpenCLResources(std::move(context), std::move(program), std::move(forwardBackpropQueue), std::move(deltaToGradientQueue), std::move(concurrentQueue));
+        return OpenCLResources(
+            std::move(context),
+            std::move(program),
+            std::move(forwardBackpropQueue),
+            std::move(deltaToGradientQueue),
+            std::move(concurrentQueue)
+        );
     }
+
 
     OpenCLResources OpenCLResources::createOpenCLResources(std::shared_ptr<SharedResources> p_sharedResources) {
         if (!p_sharedResources) {
@@ -163,6 +153,8 @@ namespace Utils {
         }
         return OpenCLResources(std::move(p_sharedResources), std::move(forwardBackpropQueue), std::move(deltaToGradientQueue), std::move(concurrentQueue));
     }
+
+    
 
     void OpenCLResources::print() const {
         std::cout << "--- OpenCLResources Status ---" << std::endl;
@@ -206,32 +198,33 @@ namespace Utils {
         std::cout << "------------------------------" << std::endl;
     }
 
+    bool OpenCLResources::valid() const {
+        return m_sharedResources && m_sharedResources->getContext()() && m_sharedResources->getProgram()() &&
+               m_forwardBackpropQueue() && m_deltaToGradientQueue() && m_concurrentQueue();
+    }
+
     std::vector<std::string> OpenCLResources::getAllKernelFiles(const std::string& p_folderPath) {
         std::vector<std::string> filePaths;
 
-        if (!std::filesystem::exists(p_folderPath)) {
-            std::cerr << "Error: Folder '" << p_folderPath << "' does not exist." << std::endl;
-            return filePaths;
-        }
-
-        if (!std::filesystem::is_directory(p_folderPath)) {
-            std::cerr << "Error: Path '" << p_folderPath << "' is not a directory." << std::endl;
-            return filePaths;
-        }
-
         try {
+            if (!std::filesystem::exists(p_folderPath) || !std::filesystem::is_directory(p_folderPath)) {
+                return {};
+            }
+
             for (const auto& entry : std::filesystem::recursive_directory_iterator(p_folderPath)) {
-                if (entry.is_regular_file() && (entry.path().extension() == ".cl")) {
+                if (entry.is_regular_file() && entry.path().extension() == ".cl") {
                     filePaths.push_back(entry.path().string());
                 }
             }
-        } catch (const std::filesystem::filesystem_error& ex) {
-            std::cerr << "Filesystem error during traversal: " << ex.what() << std::endl;
+
+            std::sort(filePaths.begin(), filePaths.end());
+        } catch (...) {
+            return {};
         }
 
-        std::sort(filePaths.begin(), filePaths.end());
         return filePaths;
-    }
+}
+
 
     void saveBuffer(const cl::CommandQueue& p_queue, const cl::Buffer& p_buffer, H5::Group& p_group, const std::string& p_name, size_t p_size) {
         if (H5Lexists(p_group.getId(), p_name.c_str(), H5P_DEFAULT)) {

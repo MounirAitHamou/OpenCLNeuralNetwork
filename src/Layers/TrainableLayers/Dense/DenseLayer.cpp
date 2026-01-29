@@ -33,6 +33,7 @@ namespace Layers::Trainable {
                                     const cl::Buffer& p_inputs,
                                     const size_t p_batchSize) {
         if (m_batchSize < p_batchSize) setBatchSize(p_batchSize);
+
         size_t flatInputSize = m_inputDimensions.getTotalElements();
         size_t flatOutputSize = m_outputDimensions.getTotalElements();
         
@@ -106,21 +107,23 @@ namespace Layers::Trainable {
                                                                 const cl::Buffer& p_inputs,
                                                                 const size_t p_batchSize) {
         if (m_batchSize < p_batchSize) setBatchSize(p_batchSize);
-        std::vector<cl::Event> deltaBackPropWaitList = { p_backpropEvent };
-        p_deltaToGradientQueue.enqueueBarrierWithWaitList(&deltaBackPropWaitList);
+        if (p_backpropEvent() != nullptr) {
+            std::vector<cl::Event> deltaBackPropWaitList = { p_backpropEvent };
+            p_deltaToGradientQueue.enqueueBarrierWithWaitList(&deltaBackPropWaitList);
+        }
 
         size_t flatInputSize = m_inputDimensions.getTotalElements();
         size_t flatOutputSize = m_outputDimensions.getTotalElements();
         
         cl_event raw_gemm_event = nullptr;
         cl_command_queue raw_queue = p_deltaToGradientQueue.get();
-
+        float alpha = 1.0f / static_cast<float>(p_batchSize);
         auto status = clblast::Gemm<float>(
             clblast::Layout::kRowMajor,
             clblast::Transpose::kYes,
             clblast::Transpose::kNo,
             flatOutputSize, flatInputSize, p_batchSize,
-            NO_SCALAR,
+            alpha,
             getDeltas()(), NO_OFFSET, flatOutputSize,
             p_inputs(), NO_OFFSET, flatInputSize,
             CLEAR_C,
@@ -143,7 +146,7 @@ namespace Layers::Trainable {
             clblast::Layout::kRowMajor,
             clblast::Transpose::kYes,
             p_batchSize, flatOutputSize,
-            NO_SCALAR,
+            alpha,
             getDeltas()(), NO_OFFSET, flatOutputSize,
             m_onesBuffer(), NO_OFFSET, 1,
             CLEAR_C,

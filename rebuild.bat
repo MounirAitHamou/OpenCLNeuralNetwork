@@ -14,5 +14,7 @@ cmake .. -G Ninja -DCMAKE_BUILD_TYPE=Release
 
 ninja
 
+ctest --output-on-failure -C Release
+
 cd ..
 endlocal
