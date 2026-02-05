@@ -63,6 +63,8 @@ namespace Layers {
         virtual bool equals(const cl::CommandQueue& p_queue, const Layer& p_other) const { return layerEquals(p_queue, p_other); }
         virtual void print(const cl::CommandQueue& p_queue, const size_t p_batchSize) const { printLayer(p_queue, p_batchSize); }
 
+        size_t getBatchSize() const { return m_batchSize; }
+
         virtual void setBatchSize(const size_t p_batchSize) {
             allocateLayerBuffers(p_batchSize);
         }

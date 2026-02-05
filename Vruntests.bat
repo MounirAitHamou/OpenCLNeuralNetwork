@@ -8,7 +8,7 @@ if not exist build (
 
 cd build
 
-ctest --output-on-failure -C Release
+ctest -V --no-compress-output -C Release
 
 cd ..
 endlocal

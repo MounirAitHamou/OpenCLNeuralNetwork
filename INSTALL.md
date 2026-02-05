@@ -83,7 +83,7 @@ Open `CMakeLists.txt` in the root of **OpenCLNeuralNetwork** and set the paths i
 ## 6. Build the Project
 - From the root of the OpenCLNeuralNetwork project:
 ```bash
-rebuild.bat
+build.bat
 ```
 
 ## 7. Make sure the tests pass
