@@ -1,6 +1,16 @@
 #include "NeuralNetworks/Local/LocalNeuralNetwork.hpp"
 #include <chrono>
 
+#ifdef _WIN32
+#define _CRTDBG_MAP_ALLOC
+#include <cstdlib>
+#include <crtdbg.h>
+
+#ifdef _DEBUG
+#define DBG_NEW new (_NORMAL_BLOCK, __FILE__, __LINE__)
+#define new DBG_NEW
+#endif
+#endif
 
 #include <stdio.h>
 #include <stdint.h>
@@ -11,10 +21,13 @@
 #include <fstream>
 #include <stdexcept>
 
-int XORTest(std::shared_ptr<Utils::SharedResources> p_sharedResources, NeuralNetworks::Local::LocalNeuralNetwork& net){
+int XORTest(std::shared_ptr<Utils::SharedResources> p_sharedResources, NeuralNetworks::Local::LocalNeuralNetwork &net)
+{
     size_t batchSize = 1;
     DataLoaders::CSVNumericalLoader csvLoader(p_sharedResources, batchSize, {"bit1", "bit2"}, {"outputbit"});
-    csvLoader.loadData("data/XOR/xor_data.csv");
+    std::string dataDir = DATA_DIR;
+    std::string filePath = dataDir + "/XOR/xor_data.csv";
+    csvLoader.loadData(filePath);
     unsigned int seed;
     seed = static_cast<unsigned int>(std::chrono::system_clock::now().time_since_epoch().count());
     csvLoader.splitData(1.0f, 0.0f, seed);
@@ -22,19 +35,21 @@ int XORTest(std::shared_ptr<Utils::SharedResources> p_sharedResources, NeuralNet
     csvLoader.shuffleCurrentPartition(seed);
 
     std::cout << "\nTesting:\n";
-    for (const Utils::Batch& batch : csvLoader){
+    for (const Utils::Batch &batch : csvLoader)
+    {
         std::vector<float> inputsVec = batch.getInputsVector();
         std::vector<float> targetsVec = batch.getTargetsVector();
         std::vector<float> prediction = net.predict(batch.getInputs(), batch.getSize());
 
         std::cout << "Input: (" << inputsVec[0] << ", " << inputsVec[1] << ")"
-          << " | Predicted: " << prediction[0]
-          << " | Target: " << targetsVec[0] << std::endl;
+                  << " | Predicted: " << prediction[0]
+                  << " | Target: " << targetsVec[0] << std::endl;
     }
     return 0;
 }
 
-int makeXORModel(Utils::OpenCLResources oclResources, const std::string p_fileName) {
+int makeXORModel(Utils::OpenCLResources oclResources, const std::string p_fileName)
+{
     size_t batchSize = 3;
     float learningRate = 0.001f;
     float weightDecayRate = 0.0f;
@@ -45,17 +60,19 @@ int makeXORModel(Utils::OpenCLResources oclResources, const std::string p_fileNa
     bool lossReporting = true;
 
     DataLoaders::CSVNumericalLoader csvLoader(oclResources.getSharedResources(), batchSize, {"bit1", "bit2"}, {"outputbit"});
-    csvLoader.loadData("data/XOR/xor_data.csv");
+    std::string dataDir = DATA_DIR;
+    std::string dataFilePath = dataDir + "/XOR/xor_data.csv";
+    csvLoader.loadData(dataFilePath);
     size_t seed;
     seed = static_cast<size_t>(std::chrono::system_clock::now().time_since_epoch().count());
     csvLoader.splitData(1.0f, 0.0f, seed);
     const Utils::Dimensions initialInputDimensions = Utils::Dimensions({csvLoader.getInputSize()});
-    const size_t flatInputSize = initialInputDimensions.getTotalElements();
     const size_t flatOutputSize = csvLoader.getTargetSize();
 
     NeuralNetworks::Local::LocalNeuralNetwork loadedNet;
     NeuralNetworks::Local::LocalNeuralNetwork net;
-    if (!std::filesystem::exists(p_fileName)){
+    if (!std::filesystem::exists(p_fileName))
+    {
         auto lossFunctionArgs = Utils::makeBinaryCrossEntropyLossFunctionArgs();
 
         auto optimizerArgs = Utils::makeAdamWArgs(
@@ -63,39 +80,32 @@ int makeXORModel(Utils::OpenCLResources oclResources, const std::string p_fileNa
             weightDecayRate,
             beta1,
             beta2,
-            epsilon
-        );
-        net = NeuralNetworks::Local::LocalNeuralNetwork(std::move(oclResources), Utils::createNetworkArgs(
-            initialInputDimensions,
-            {},
-            std::move(optimizerArgs),
-            std::move(lossFunctionArgs)
-        ), seed, batchSize);
+            epsilon);
+        net = NeuralNetworks::Local::LocalNeuralNetwork(std::move(oclResources), Utils::createNetworkArgs(initialInputDimensions, {}, std::move(optimizerArgs), std::move(lossFunctionArgs)), seed, batchSize);
 
         net.addDense(32)
-           .addTanh()
-           .addConvolutional(Utils::FilterDimensions(1,1,32,24),
-                             Utils::StrideDimensions(1,1),
-                             Utils::PaddingType::Same)
-           .addReLU()
-           .addConvolutional(Utils::FilterDimensions(1,1,24,16),
-                             Utils::StrideDimensions(1,1),
-                             Utils::PaddingType::Same)
-           .addReLU()
-           .addConvolutional(Utils::FilterDimensions(1,1,16,8),
-                             Utils::StrideDimensions(1,1),
-                             Utils::PaddingType::Same)
-           .addReLU()
-           .addDense(16)
-           .addTanh()
-           .addDense(flatOutputSize)
-           .addSigmoid();
-           
+            .addTanh()
+            .addConvolutional(Utils::FilterDimensions(1, 1, 32, 24),
+                              Utils::StrideDimensions(1, 1),
+                              Utils::PaddingType::Same)
+            .addReLU()
+            .addConvolutional(Utils::FilterDimensions(1, 1, 24, 16),
+                              Utils::StrideDimensions(1, 1),
+                              Utils::PaddingType::Same)
+            .addReLU()
+            .addConvolutional(Utils::FilterDimensions(1, 1, 16, 8),
+                              Utils::StrideDimensions(1, 1),
+                              Utils::PaddingType::Same)
+            .addReLU()
+            .addDense(16)
+            .addTanh()
+            .addDense(flatOutputSize)
+            .addSigmoid();
+
         net.train(
             csvLoader,
             epochs,
-            lossReporting
-        );
+            lossReporting);
 
         XORTest(net.getSharedResources(), net);
 
@@ -104,36 +114,26 @@ int makeXORModel(Utils::OpenCLResources oclResources, const std::string p_fileNa
 
         loadedNet = NeuralNetworks::Local::LocalNeuralNetwork::load(net.getSharedResources(), p_fileName, batchSize);
 
-        if (net.equals(loadedNet)) { 
+        if (net.equals(loadedNet))
+        {
             std::cout << "Loaded network is equivalent to initial network\n";
         }
-        else {
+        else
+        {
             std::cerr << "Loaded network not equivalent to initial network\n";
             return -1;
         }
     }
-    else {
+    else
+    {
         loadedNet = NeuralNetworks::Local::LocalNeuralNetwork::load(oclResources.getSharedResources(), p_fileName, batchSize);
     }
-    
-    while (true){
-        std::cout << "\nTesting loaded network:\n";
-        XORTest(loadedNet.getSharedResources(), loadedNet);
-        loadedNet.train(
-            csvLoader,
-            epochs,
-            lossReporting
-        );
 
-        std::cout << "\nTesting after retraining:\n";
-        XORTest(loadedNet.getSharedResources(), loadedNet);
-        std::cout << "\nCheckpointing again...\n";
-        loadedNet.save(p_fileName);
-    }
-   return 0;
+    return 0;
 }
 
-int makeCIFARModel(Utils::OpenCLResources oclResources, const std::string p_fileName) {
+int makeCIFARModel(Utils::OpenCLResources oclResources, const std::string p_fileName)
+{
     size_t batchSize = 10;
     float learningRate = 1e-3f;
     float weightDecayRate = 0.0f;
@@ -152,8 +152,7 @@ int makeCIFARModel(Utils::OpenCLResources oclResources, const std::string p_file
         true,
         DataLoaders::BinImageDataLoader::DataOrder::CHW,
         DataLoaders::BinImageDataLoader::DataOrder::CHW,
-        10
-    );
+        10);
 
     cifarLoader.loadData("data/CIFAR-10/data_batch_1.bin");
 
@@ -169,65 +168,67 @@ int makeCIFARModel(Utils::OpenCLResources oclResources, const std::string p_file
 
     NeuralNetworks::Local::LocalNeuralNetwork net;
 
-    if (!std::filesystem::exists(p_fileName)) {
-        auto lossFunctionArgs = Utils::makeMeanSquaredErrorLossFunctionArgs();
+    if (!std::filesystem::exists(p_fileName))
+    {
+        auto lossFunctionArgs = Utils::makeSoftmaxCrossEntropyLossFunctionArgs();
 
         auto optimizerArgs = Utils::makeAdamWArgs(
             learningRate,
             weightDecayRate,
             beta1,
             beta2,
-            epsilon
-        );
+            epsilon);
         net = NeuralNetworks::Local::LocalNeuralNetwork(
             std::move(oclResources),
             Utils::createNetworkArgs(
                 inputDims,
                 {},
                 std::move(optimizerArgs),
-                std::move(lossFunctionArgs)
-            ),
+                std::move(lossFunctionArgs)),
             seed,
-            batchSize
-        );
+            batchSize);
 
         net.addConvolutional(
-                Utils::FilterDimensions(3, 3, 3, 32),
-                Utils::StrideDimensions(1, 1),
-                Utils::PaddingType::Same
-            )
+               Utils::FilterDimensions(3, 3, 3, 32),
+               Utils::StrideDimensions(1, 1),
+               Utils::PaddingType::Same)
             .addReLU()
             .addConvolutional(
                 Utils::FilterDimensions(3, 3, 32, 64),
                 Utils::StrideDimensions(2, 2),
-                Utils::PaddingType::Same
-            )
+                Utils::PaddingType::Same)
             .addReLU()
             .addConvolutional(
                 Utils::FilterDimensions(3, 3, 64, 128),
                 Utils::StrideDimensions(2, 2),
-                Utils::PaddingType::Same
-            )
+                Utils::PaddingType::Same)
             .addReLU()
             .addDense(256)
             .addReLU()
             .addDense(outputSize);
         net.train(cifarLoader, epochs, lossReporting);
         net.save(p_fileName);
-    } else {
+    }
+    else
+    {
         net = NeuralNetworks::Local::LocalNeuralNetwork::load(
             oclResources.getSharedResources(),
             p_fileName,
-            batchSize
-        );
+            batchSize);
     }
 
     return 0;
 }
 
-
-int main(void) {
+int main(void)
+{
+#ifdef _WIN32
+#ifdef _DEBUG
+    _CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
+#endif
+#endif
     Utils::OpenCLResources oclResources = Utils::OpenCLResources::createOpenCLResources();
     makeXORModel(std::move(oclResources), "xor_network.h5");
+    // makeCIFARModel(std::move(oclResources), "cifar_network.h5");
     return 0;
 }

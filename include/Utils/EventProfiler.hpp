@@ -5,8 +5,10 @@
 #include <vector>
 #include <algorithm>
 #include <iostream>
-namespace Utils {
-    struct EventProfile {
+namespace Utils
+{
+    struct EventProfile
+    {
         std::string m_name;
         cl_ulong m_queued;
         cl_ulong m_submit;
@@ -14,10 +16,11 @@ namespace Utils {
         cl_ulong m_end;
     };
 
-    class EventProfiler {
+    class EventProfiler
+    {
     public:
-        static EventProfile profileEvent(const cl::Event& p_event, const std::string& p_name);
+        static EventProfile profileEvent(const cl::Event p_event, const std::string &p_name);
 
-        static void printTimeline(const std::vector<EventProfile>& p_events);
+        static void printTimeline(const std::vector<EventProfile> &p_events);
     };
 }

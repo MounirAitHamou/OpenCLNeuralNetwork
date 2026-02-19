@@ -1,5 +1,11 @@
 /build
-OpenCLNeuralNetwork.exe
 *.h5
 .vscode/settings.json
+/vcpkg
+/build-debug
+/.vs
+/out
+*.exe
+*.obj
 *.dll
+.vscode/settings.json
