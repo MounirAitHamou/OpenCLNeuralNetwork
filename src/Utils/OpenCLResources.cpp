@@ -1,7 +1,7 @@
 #include "Utils/OpenCLResources.hpp"
 namespace Utils
 {
-    OpenCLResources OpenCLResources::createOpenCLResources(const std::string &p_kernelsPath)
+    OpenCLResources OpenCLResources::createOpenCLResources(const std::string &p_kernelsPath, size_t p_platformIndex, size_t p_deviceIndex)
     {
         std::vector<cl::Platform> platforms;
         cl::Platform::get(&platforms);
@@ -15,23 +15,11 @@ namespace Utils
         {
             std::cout << "Platform " << i << ": " << platforms[i].getInfo<CL_PLATFORM_NAME>() << std::endl;
         }
-
-        int platformIndex = 0;
-        if (platforms.size() > 1)
+        size_t platformIndex = p_platformIndex;
+        if (p_platformIndex >= platforms.size())
         {
-            std::cout << "Please select a platform by entering its index (0 to " << platforms.size() - 1 << "): ";
-            std::cin >> platformIndex;
-            if (std::cin.fail() || platformIndex < 0 || platformIndex >= platforms.size())
-            {
-                std::cin.clear();
-                std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
-                std::cerr << "Invalid platform index, using 0 by default.\n";
-                platformIndex = 0;
-            }
-        }
-        else
-        {
-            std::cout << "Only one platform found, using it by default.\n";
+            std::cerr << "Invalid platform index, using 0 by default.\n";
+            platformIndex = 0;
         }
 
         cl::Platform platform = platforms[platformIndex];
@@ -58,22 +46,11 @@ namespace Utils
                       << ", " << devices[i].getInfo<CL_DEVICE_NAME>() << "\n";
         }
 
-        int deviceIndex = 0;
-        if (devices.size() > 1)
+        size_t deviceIndex = p_deviceIndex;
+        if (p_deviceIndex >= devices.size())
         {
-            std::cout << "Please select a device by entering its index (0 to " << devices.size() - 1 << "): ";
-            std::cin >> deviceIndex;
-            if (std::cin.fail() || deviceIndex < 0 || deviceIndex >= devices.size())
-            {
-                std::cin.clear();
-                std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
-                std::cerr << "Invalid device index, using 0 by default.\n";
-                deviceIndex = 0;
-            }
-        }
-        else
-        {
-            std::cout << "Only one device found, using it by default.\n";
+            std::cerr << "Invalid device index, using 0 by default.\n";
+            deviceIndex = 0;
         }
 
         cl::Device device = devices[deviceIndex];

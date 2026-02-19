@@ -81,7 +81,7 @@ namespace Utils
             return m_concurrentQueue;
         }
 
-        static OpenCLResources createOpenCLResources(const std::string &p_kernelsPath = KERNELS_DIR);
+        static OpenCLResources createOpenCLResources(const std::string &p_kernelsPath = KERNELS_DIR, size_t p_platformIndex = 0, size_t p_deviceIndex = 0);
 
         static OpenCLResources createOpenCLResources(std::shared_ptr<SharedResources> p_sharedResources);
 
