@@ -1,33 +1,45 @@
 #pragma once
 #include "Utils/Dimensions.hpp"
 
-namespace Utils {
+namespace Utils
+{
 
-    struct FilterDimensions : public Dimensions {
-        FilterDimensions(std::vector<size_t> p_dimensions) {
-            if (p_dimensions.size() == 4) {
-                for (const auto& dim : p_dimensions) {
-                    if (dim <= 0) {
+    struct FilterDimensions : public Dimensions
+    {
+        FilterDimensions(std::vector<size_t> p_dimensions)
+        {
+            if (p_dimensions.size() == 4)
+            {
+                for (const auto &dim : p_dimensions)
+                {
+                    if (dim <= 0)
+                    {
                         throw std::invalid_argument("Dimensions cannot be zero or negative.");
                     }
                 }
                 m_dimensions = p_dimensions;
             }
-            else {
+            else
+            {
                 throw std::invalid_argument("FilterDimensions requires 4-dimensional vector.");
             }
         }
 
-        FilterDimensions(std::initializer_list<size_t> p_dimensions) {
-            if (p_dimensions.size() == 4) {
-                for (const auto& dim : p_dimensions) {
-                    if (dim <= 0) {
+        FilterDimensions(std::initializer_list<size_t> p_dimensions)
+        {
+            if (p_dimensions.size() == 4)
+            {
+                for (const auto &dim : p_dimensions)
+                {
+                    if (dim <= 0)
+                    {
                         throw std::invalid_argument("Dimensions cannot be zero or negative.");
                     }
                 }
                 m_dimensions = p_dimensions;
             }
-            else {
+            else
+            {
                 throw std::invalid_argument("FilterDimensions requires 4-dimensional vector.");
             }
         }

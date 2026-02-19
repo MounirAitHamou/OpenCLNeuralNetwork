@@ -17,18 +17,22 @@ namespace Utils
         }
 
         int platformIndex = 0;
-        /*if (platforms.size() > 1) {
+        if (platforms.size() > 1)
+        {
             std::cout << "Please select a platform by entering its index (0 to " << platforms.size() - 1 << "): ";
             std::cin >> platformIndex;
-            if (std::cin.fail() || platformIndex < 0 || platformIndex >= platforms.size()) {
+            if (std::cin.fail() || platformIndex < 0 || platformIndex >= platforms.size())
+            {
                 std::cin.clear();
                 std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
                 std::cerr << "Invalid platform index, using 0 by default.\n";
                 platformIndex = 0;
             }
-        } else {
+        }
+        else
+        {
             std::cout << "Only one platform found, using it by default.\n";
-        }*/
+        }
 
         cl::Platform platform = platforms[platformIndex];
         std::cout << "Using platform: " << platform.getInfo<CL_PLATFORM_NAME>() << std::endl;
@@ -55,18 +59,22 @@ namespace Utils
         }
 
         int deviceIndex = 0;
-        /*if (devices.size() > 1) {
+        if (devices.size() > 1)
+        {
             std::cout << "Please select a device by entering its index (0 to " << devices.size() - 1 << "): ";
             std::cin >> deviceIndex;
-            if (std::cin.fail() || deviceIndex < 0 || deviceIndex >= devices.size()) {
+            if (std::cin.fail() || deviceIndex < 0 || deviceIndex >= devices.size())
+            {
                 std::cin.clear();
                 std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
                 std::cerr << "Invalid device index, using 0 by default.\n";
                 deviceIndex = 0;
             }
-        } else {
+        }
+        else
+        {
             std::cout << "Only one device found, using it by default.\n";
-        }*/
+        }
 
         cl::Device device = devices[deviceIndex];
         std::cout << "Selected device: " << device.getInfo<CL_DEVICE_NAME>() << "\n";

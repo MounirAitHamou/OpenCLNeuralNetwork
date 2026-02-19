@@ -1,6 +1,8 @@
 #include "Optimizers/AdamBaseOptimizers/AdamW/AdamWOptimizer.hpp"
-namespace Optimizers {
-    void AdamWOptimizer::setupKernels() {
+namespace Optimizers
+{
+    void AdamWOptimizer::setupKernels()
+    {
         m_updateKernel = cl::Kernel(m_sharedResources->getProgram(), "adamWUpdateParameters");
         m_updateKernel.setArg(4, m_learningRate);
         m_updateKernel.setArg(5, m_beta1);

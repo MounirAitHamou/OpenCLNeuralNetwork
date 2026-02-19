@@ -1,6 +1,8 @@
 #include "Optimizers/AdamBaseOptimizers/Adam/AdamOptimizer.hpp"
-namespace Optimizers {
-    void AdamOptimizer::setupKernels() {
+namespace Optimizers
+{
+    void AdamOptimizer::setupKernels()
+    {
         m_updateKernel = cl::Kernel(m_sharedResources->getProgram(), "adamUpdateParameters");
         m_updateKernel.setArg(4, m_learningRate);
         m_updateKernel.setArg(5, m_beta1);
