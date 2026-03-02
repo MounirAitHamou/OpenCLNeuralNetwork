@@ -53,7 +53,7 @@ namespace Layers::Trainable
         void setBatchSize(const size_t p_batchSize) final override
         {
             allocateLayerBuffers(p_batchSize);
-            m_biasKernel.setArg(1, getOutputs());
+            Utils::setKernelArgs(1, m_biasKernel, getOutputs());
         }
 
         size_t getInputChannels() const { return m_inputDimensions.getDimensions()[0]; }

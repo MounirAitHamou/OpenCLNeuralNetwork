@@ -4,8 +4,7 @@ namespace Optimizers
     void SGDOptimizer::setupKernels()
     {
         m_updateKernel = cl::Kernel(m_sharedResources->getProgram(), "sgdUpdateParameters");
-        m_updateKernel.setArg(2, m_learningRate);
-        m_updateKernel.setArg(3, m_weightDecayRate);
+        Utils::setKernelArgs(2, m_updateKernel, m_learningRate, m_weightDecayRate);
     }
 
     cl::Event SGDOptimizer::updateParameters(const cl::CommandQueue &p_concurrentQueue,
@@ -15,9 +14,7 @@ namespace Optimizers
                                              cl::Buffer &p_gradients,
                                              size_t p_numElements)
     {
-        m_updateKernel.setArg(0, p_parameters);
-        m_updateKernel.setArg(1, p_gradients);
-
+        Utils::setKernelArgs(m_updateKernel, p_parameters, p_gradients);
         cl::Event kernelEvent;
         std::vector<cl::Event> eventList = {p_lastEvent};
         p_concurrentQueue.enqueueNDRangeKernel(m_updateKernel, cl::NullRange,

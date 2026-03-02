@@ -33,10 +33,8 @@ namespace Layers::Activation
         {
             allocateLayerBuffers(p_batchSize);
             allocatePreActivationLayerBuffers(p_batchSize);
-            m_forwardKernel.setArg(1, getOutputs());
-            m_forwardKernel.setArg(2, getPreActivations());
-            m_backwardKernel.setArg(1, getDeltas());
-            m_backwardKernel.setArg(2, getPreActivations());
+            Utils::setKernelArgs(1, m_forwardKernel, getOutputs(), getPreActivations());
+            Utils::setKernelArgs(1, m_backwardKernel, getDeltas(), getPreActivations());
         }
 
     protected:

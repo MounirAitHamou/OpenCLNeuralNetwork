@@ -9,10 +9,7 @@ namespace LossFunctions
                                                     const size_t p_outputElements,
                                                     const size_t p_batchSize)
     {
-        m_gradientKernel.setArg(0, p_predictions);
-        m_gradientKernel.setArg(1, p_targets);
-        m_gradientKernel.setArg(2, p_outputGradients);
-        m_gradientKernel.setArg(3, static_cast<cl_uint>(p_outputElements));
+        Utils::setKernelArgs(m_gradientKernel, p_predictions, p_targets, p_outputGradients, (cl_uint)p_outputElements);
         cl::NDRange global(p_batchSize, p_outputElements);
         cl::Event kernelEvent;
         p_queue.enqueueNDRangeKernel(m_gradientKernel,

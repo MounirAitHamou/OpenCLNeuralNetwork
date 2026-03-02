@@ -221,8 +221,10 @@ namespace Layers::Trainable
         {
             throw std::runtime_error("Failed to create denseBias kernel");
         }
-        m_biasKernel.setArg(0, getBiases());
-        m_biasKernel.setArg(1, getOutputs());
-        m_biasKernel.setArg(2, (cl_uint)getTotalOutputElements());
+
+        Utils::setKernelArgs(m_biasKernel,
+                             getBiases(),
+                             getOutputs(),
+                             (cl_int)getTotalOutputElements());
     }
 }

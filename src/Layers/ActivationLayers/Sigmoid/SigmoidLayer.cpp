@@ -10,14 +10,13 @@ namespace Layers::Activation
         {
             throw std::runtime_error("Failed to create Sigmoid forward kernel");
         }
-        m_forwardKernel.setArg(1, getOutputs());
+        Utils::setKernelArgs(1, m_forwardKernel, getOutputs());
 
         m_backwardKernel = cl::Kernel(m_sharedResources->getProgram(), "sigmoidBackward", &err);
         if (err != CL_SUCCESS)
         {
             throw std::runtime_error("Failed to create Sigmoid backward kernel");
         }
-        m_backwardKernel.setArg(1, getDeltas());
-        m_backwardKernel.setArg(2, getOutputs());
+        Utils::setKernelArgs(1, m_backwardKernel, getDeltas(), getOutputs());
     }
 }

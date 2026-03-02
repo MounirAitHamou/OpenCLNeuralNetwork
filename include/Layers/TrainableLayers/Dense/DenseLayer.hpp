@@ -43,7 +43,7 @@ namespace Layers::Trainable
         void setBatchSize(const size_t p_batchSize) final override
         {
             allocateLayerBuffers(p_batchSize);
-            m_biasKernel.setArg(1, getOutputs());
+            Utils::setKernelArgs(1, m_biasKernel, getOutputs());
 
             m_onesBuffer = cl::Buffer(m_sharedResources->getContext(), CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, p_batchSize * sizeof(float), std::vector<float>(p_batchSize, 1.0f).data());
 

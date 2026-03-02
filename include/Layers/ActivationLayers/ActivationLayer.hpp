@@ -29,7 +29,7 @@ namespace Layers::Activation
                 setBatchSize(p_batchSize);
             cl::Event forwardEvent;
 
-            m_forwardKernel.setArg(0, p_inputs);
+            Utils::setKernelArgs(m_forwardKernel, p_inputs);
 
             cl_int err = p_forwardBackpropQueue.enqueueNDRangeKernel(
                 m_forwardKernel,
@@ -52,8 +52,7 @@ namespace Layers::Activation
             if (m_batchSize < p_batchSize)
                 setBatchSize(p_batchSize);
             cl::Event backpropEvent;
-
-            m_backwardKernel.setArg(0, p_previousLayerDeltas);
+            Utils::setKernelArgs(m_backwardKernel, p_previousLayerDeltas);
 
             cl_int err = p_forwardBackpropQueue.enqueueNDRangeKernel(
                 m_backwardKernel,
@@ -74,9 +73,8 @@ namespace Layers::Activation
         virtual void setBatchSize(const size_t p_batchSize) override
         {
             allocateLayerBuffers(p_batchSize);
-            m_forwardKernel.setArg(1, getOutputs());
-            m_backwardKernel.setArg(1, getDeltas());
-            m_backwardKernel.setArg(2, getOutputs());
+            Utils::setKernelArgs(1, m_forwardKernel, getOutputs());
+            Utils::setKernelArgs(1, m_backwardKernel, getDeltas(), getOutputs());
         }
 
     protected:

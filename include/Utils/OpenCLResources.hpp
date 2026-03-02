@@ -303,4 +303,20 @@ namespace Utils
                    const std::vector<float> &B,
                    float tol = 1e-4f);
 
+    template <typename... Args>
+    void setKernelArgs(int p_startIndex,
+                       cl::Kernel &p_kernel,
+                       Args &&...p_args)
+    {
+        int index = p_startIndex;
+        (p_kernel.setArg(index++, std::forward<Args>(p_args)), ...);
+    }
+
+    template <typename... Args>
+    void setKernelArgs(cl::Kernel &p_kernel,
+                       Args &&...p_args)
+    {
+        setKernelArgs(0, p_kernel, std::forward<Args>(p_args)...);
+    }
+
 }

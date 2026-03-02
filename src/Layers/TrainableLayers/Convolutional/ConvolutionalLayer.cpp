@@ -91,8 +91,7 @@ namespace Layers::Trainable
             globalWidth,
             (size_t)getInputHeight(),
             (size_t)getInputChannels() * p_batchSize);
-
-        m_backpropDeltasKernel.setArg(14, p_previousLayerDeltas);
+        Utils::setKernelArgs(14, m_backpropDeltasKernel, p_previousLayerDeltas);
 
         cl::Event executionEvent;
         p_forwardBackpropQueue.enqueueNDRangeKernel(
@@ -126,8 +125,7 @@ namespace Layers::Trainable
             (size_t)m_filterDimensions.getHeight(),
             (size_t)getInputChannels() * getOutputChannels());
 
-        m_computeWeightsGradientsKernel.setArg(14, p_inputs);
-        m_computeWeightsGradientsKernel.setArg(15, (int)p_batchSize);
+        Utils::setKernelArgs(14, m_computeWeightsGradientsKernel, p_inputs, (int)p_batchSize);
 
         cl::Event weightsEvent;
         p_queue.enqueueNDRangeKernel(
@@ -140,7 +138,7 @@ namespace Layers::Trainable
 
         cl::NDRange biasGlobalSize(getOutputChannels());
         cl::Event biasEvent;
-        m_computeBiasesGradientsKernel.setArg(5, (cl_int)p_batchSize);
+        Utils::setKernelArgs(5, m_computeBiasesGradientsKernel, (cl_int)p_batchSize);
         p_queue.enqueueNDRangeKernel(
             m_computeBiasesGradientsKernel,
             cl::NullRange,
@@ -325,32 +323,33 @@ namespace Layers::Trainable
         {
             throw std::runtime_error("Failed to create convBias kernel");
         }
-        m_biasKernel.setArg(0, getBiases());
-        m_biasKernel.setArg(1, getOutputs());
-        m_biasKernel.setArg(2, (int)getOutputHeight());
-        m_biasKernel.setArg(3, (int)getOutputWidth());
-        m_biasKernel.setArg(4, (int)getOutputChannels());
-
+        Utils::setKernelArgs(m_biasKernel,
+                             getBiases(),
+                             getOutputs(),
+                             (cl_int)getOutputHeight(),
+                             (cl_int)getOutputWidth(),
+                             (cl_int)getOutputChannels());
         m_backpropDeltasKernel = cl::Kernel(m_sharedResources->getProgram(), "convolutionalBackpropDeltas", &err);
 
         if (err != CL_SUCCESS)
         {
             throw std::runtime_error("Failed to create backprop kernel.");
         }
-        m_backpropDeltasKernel.setArg(0, getWeights());
-        m_backpropDeltasKernel.setArg(1, getDeltas());
-        m_backpropDeltasKernel.setArg(2, (cl_int)getInputHeight());
-        m_backpropDeltasKernel.setArg(3, (cl_int)getInputWidth());
-        m_backpropDeltasKernel.setArg(4, (cl_int)getOutputHeight());
-        m_backpropDeltasKernel.setArg(5, (cl_int)getOutputWidth());
-        m_backpropDeltasKernel.setArg(6, (cl_int)m_filterDimensions.getHeight());
-        m_backpropDeltasKernel.setArg(7, (cl_int)m_filterDimensions.getWidth());
-        m_backpropDeltasKernel.setArg(8, (cl_int)m_strideDimensions.getHeight());
-        m_backpropDeltasKernel.setArg(9, (cl_int)m_strideDimensions.getWidth());
-        m_backpropDeltasKernel.setArg(10, (cl_int)m_paddingValues.getTop());
-        m_backpropDeltasKernel.setArg(11, (cl_int)m_paddingValues.getLeft());
-        m_backpropDeltasKernel.setArg(12, (cl_int)getInputChannels());
-        m_backpropDeltasKernel.setArg(13, (cl_int)getOutputChannels());
+        Utils::setKernelArgs(m_backpropDeltasKernel,
+                             getWeights(),
+                             getDeltas(),
+                             (cl_int)getInputHeight(),
+                             (cl_int)getInputWidth(),
+                             (cl_int)getOutputHeight(),
+                             (cl_int)getOutputWidth(),
+                             (cl_int)m_filterDimensions.getHeight(),
+                             (cl_int)m_filterDimensions.getWidth(),
+                             (cl_int)m_strideDimensions.getHeight(),
+                             (cl_int)m_strideDimensions.getWidth(),
+                             (cl_int)m_paddingValues.getTop(),
+                             (cl_int)m_paddingValues.getLeft(),
+                             (cl_int)getInputChannels(),
+                             (cl_int)getOutputChannels());
 
         m_computeWeightsGradientsKernel = cl::Kernel(m_sharedResources->getProgram(), "convolutionalComputeWeightsGradients", &err);
         if (err != CL_SUCCESS)
@@ -358,31 +357,35 @@ namespace Layers::Trainable
             throw std::runtime_error("Failed to create compute weights gradients kernel.");
         }
 
-        m_computeWeightsGradientsKernel.setArg(0, getDeltas());
-        m_computeWeightsGradientsKernel.setArg(1, getWeightsGradients());
-        m_computeWeightsGradientsKernel.setArg(2, (int)getInputChannels());
-        m_computeWeightsGradientsKernel.setArg(3, (int)getInputHeight());
-        m_computeWeightsGradientsKernel.setArg(4, (int)getInputWidth());
-        m_computeWeightsGradientsKernel.setArg(5, (int)getOutputChannels());
-        m_computeWeightsGradientsKernel.setArg(6, (int)getOutputHeight());
-        m_computeWeightsGradientsKernel.setArg(7, (int)getOutputWidth());
-        m_computeWeightsGradientsKernel.setArg(8, (int)m_filterDimensions.getHeight());
-        m_computeWeightsGradientsKernel.setArg(9, (int)m_filterDimensions.getWidth());
-        m_computeWeightsGradientsKernel.setArg(10, (int)m_strideDimensions.getHeight());
-        m_computeWeightsGradientsKernel.setArg(11, (int)m_strideDimensions.getWidth());
-        m_computeWeightsGradientsKernel.setArg(12, (int)m_paddingValues.getTop());
-        m_computeWeightsGradientsKernel.setArg(13, (int)m_paddingValues.getLeft());
+        Utils::setKernelArgs(m_computeWeightsGradientsKernel,
+                             getDeltas(),
+                             getWeightsGradients(),
+                             (cl_int)getInputChannels(),
+                             (cl_int)getInputHeight(),
+                             (cl_int)getInputWidth(),
+                             (cl_int)getOutputChannels(),
+                             (cl_int)getOutputHeight(),
+                             (cl_int)getOutputWidth(),
+                             (cl_int)m_filterDimensions.getHeight(),
+                             (cl_int)m_filterDimensions.getWidth(),
+                             (cl_int)m_strideDimensions.getHeight(),
+                             (cl_int)m_strideDimensions.getWidth(),
+                             (cl_int)m_paddingValues.getTop(),
+                             (cl_int)m_paddingValues.getLeft());
 
         m_computeBiasesGradientsKernel = cl::Kernel(m_sharedResources->getProgram(), "convolutionalComputeBiasesGradients", &err);
         if (err != CL_SUCCESS)
         {
             throw std::runtime_error("Failed to create compute biases gradients kernel.");
         }
-        m_computeBiasesGradientsKernel.setArg(0, getDeltas());
-        m_computeBiasesGradientsKernel.setArg(1, getBiasesGradients());
-        m_computeBiasesGradientsKernel.setArg(2, (int)getOutputChannels());
-        m_computeBiasesGradientsKernel.setArg(3, (int)getOutputHeight());
-        m_computeBiasesGradientsKernel.setArg(4, (int)getOutputWidth());
+
+        Utils::setKernelArgs(
+            m_computeBiasesGradientsKernel,
+            getDeltas(),
+            getBiasesGradients(),
+            (cl_int)getOutputChannels(),
+            (cl_int)getOutputHeight(),
+            (cl_int)getOutputWidth());
     }
 
     Utils::Dimensions ConvolutionalLayer::validateInputDimensions(

@@ -60,12 +60,13 @@ namespace Optimizers
                 vBuffer = foundBuffers->second.second;
             }
 
-            m_updateKernel.setArg(0, p_parameters);
-            m_updateKernel.setArg(1, p_gradients);
-            m_updateKernel.setArg(2, mBuffer);
-            m_updateKernel.setArg(3, vBuffer);
-            m_updateKernel.setArg(9, pow(m_beta1, (float)m_t));
-            m_updateKernel.setArg(10, pow(m_beta2, (float)m_t));
+            Utils::setKernelArgs(
+                m_updateKernel,
+                p_parameters,
+                p_gradients,
+                mBuffer,
+                vBuffer);
+            Utils::setKernelArgs(9, m_updateKernel, pow(m_beta1, (float)m_t), pow(m_beta2, (float)m_t));
 
             cl::Event kernelEvent;
             std::vector<cl::Event> eventList = {p_lastEvent};
