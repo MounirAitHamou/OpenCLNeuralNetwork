@@ -11,7 +11,7 @@ namespace Utils
         }
 
         std::cout << "Total platforms found: " << platforms.size() << "\n";
-        for (int i = 0; i < platforms.size(); ++i)
+        for (size_t i = 0; i < platforms.size(); ++i)
         {
             std::cout << "Platform " << i << ": " << platforms[i].getInfo<CL_PLATFORM_NAME>() << std::endl;
         }
@@ -37,7 +37,7 @@ namespace Utils
         }
 
         std::cout << "Total devices found: " << devices.size() << "\n";
-        for (int i = 0; i < devices.size(); ++i)
+        for (size_t i = 0; i < devices.size(); ++i)
         {
             std::cout << "Device " << i << ": "
                       << ((devices[i].getInfo<CL_DEVICE_TYPE>() == CL_DEVICE_TYPE_GPU) ? "GPU" : "CPU")
