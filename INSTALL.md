@@ -64,8 +64,8 @@ What the build script does:
 ## 3. Run the Program
 - After a successful build, execute the program:
 ```bash
-OpenCLNeuralNetwork.exe # Windows
-./OpenCLNeuralNetwork # Linux
+run.bat # Windows
+./run.sh # Linux
 ```
 
 - The program will run the main function defined in `src/main.cpp`, which includes a simple neural network training example.
