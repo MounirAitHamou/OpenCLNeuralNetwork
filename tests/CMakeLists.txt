@@ -10,40 +10,6 @@ add_subdirectory(
     ${CMAKE_BINARY_DIR}/googletest_build
 )
 
-if (MSVC)
-
-    target_compile_options(gtest PRIVATE
-        $<$<CONFIG:Debug>:/fsanitize=address>
-    )
-    target_link_options(gtest PRIVATE
-        $<$<CONFIG:Debug>:/fsanitize=address>
-    )
-
-    target_compile_options(gtest_main PRIVATE
-        $<$<CONFIG:Debug>:/fsanitize=address>
-    )
-    target_link_options(gtest_main PRIVATE
-        $<$<CONFIG:Debug>:/fsanitize=address>
-    )
-
-else()
-
-    target_compile_options(gtest PRIVATE
-        $<$<CONFIG:Debug>:-fsanitize=address>
-    )
-    target_link_options(gtest PRIVATE
-        $<$<CONFIG:Debug>:-fsanitize=address>
-    )
-
-    target_compile_options(gtest_main PRIVATE
-        $<$<CONFIG:Debug>:-fsanitize=address>
-    )
-    target_link_options(gtest_main PRIVATE
-        $<$<CONFIG:Debug>:-fsanitize=address>
-    )
-
-endif()
-
 file(GLOB_RECURSE TEST_FILES "${CMAKE_CURRENT_SOURCE_DIR}/*Test.cpp")
 
 list(LENGTH TEST_FILES TEST_FILES_COUNT)
@@ -77,13 +43,8 @@ foreach(test_file IN LISTS TEST_FILES)
             /W4
             /permissive-
             /EHsc
-            $<$<CONFIG:Debug>:/fsanitize=address>
             $<$<CONFIG:Debug>:/RTC1>
             $<$<CONFIG:Debug>:/Zi>
-        )
-
-        target_link_options(${test_name} PRIVATE
-            $<$<CONFIG:Debug>:/fsanitize=address>
         )
 
     else()
@@ -92,12 +53,7 @@ foreach(test_file IN LISTS TEST_FILES)
             -Wall
             -Wextra
             -Wpedantic
-            $<$<CONFIG:Debug>:-fsanitize=address>
             $<$<CONFIG:Debug>:-g>
-        )
-
-        target_link_options(${test_name} PRIVATE
-            $<$<CONFIG:Debug>:-fsanitize=address>
         )
 
     endif()

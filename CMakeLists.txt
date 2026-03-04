@@ -98,59 +98,35 @@ target_link_libraries(OpenCLNeuralNetwork PRIVATE
 )
 
 if (MSVC)
-
     target_compile_options(OpenCLNeuralNetworkLib PRIVATE
         /W4
         /permissive-
         /EHsc
-        $<$<CONFIG:Debug>:/fsanitize=address>
         $<$<CONFIG:Debug>:/RTC1>
         $<$<CONFIG:Debug>:/Zi>
-    )
-
-    target_link_options(OpenCLNeuralNetworkLib PRIVATE
-        $<$<CONFIG:Debug>:/fsanitize=address>
     )
 
     target_compile_options(OpenCLNeuralNetwork PRIVATE
         /W4
         /permissive-
         /EHsc
-        $<$<CONFIG:Debug>:/fsanitize=address>
         $<$<CONFIG:Debug>:/RTC1>
         $<$<CONFIG:Debug>:/Zi>
     )
-
-    target_link_options(OpenCLNeuralNetwork PRIVATE
-        $<$<CONFIG:Debug>:/fsanitize=address>
-    )
-
 else()
-
     target_compile_options(OpenCLNeuralNetworkLib PRIVATE
         -Wall
         -Wextra
         -Wpedantic
-        $<$<CONFIG:Debug>:-fsanitize=address>
         $<$<CONFIG:Debug>:-g>
-    )
-
-    target_link_options(OpenCLNeuralNetworkLib PRIVATE
-        $<$<CONFIG:Debug>:-fsanitize=address>
     )
 
     target_compile_options(OpenCLNeuralNetwork PRIVATE
         -Wall
         -Wextra
         -Wpedantic
-        $<$<CONFIG:Debug>:-fsanitize=address>
         $<$<CONFIG:Debug>:-g>
     )
-
-    target_link_options(OpenCLNeuralNetwork PRIVATE
-        $<$<CONFIG:Debug>:-fsanitize=address>
-    )
-
 endif()
 
 if(WIN32 AND MSVC)
