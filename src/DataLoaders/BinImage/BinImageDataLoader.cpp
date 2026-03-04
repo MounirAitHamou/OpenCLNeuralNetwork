@@ -28,7 +28,7 @@ namespace DataLoaders
     {
     }
 
-    size_t BinImageDataLoader::index(int p_x, int p_y, int p_c, DataOrder p_o) const
+    size_t BinImageDataLoader::index(size_t p_x, size_t p_y, size_t p_c, DataOrder p_o) const
     {
         const size_t W = m_width;
         const size_t H = m_height;
@@ -94,7 +94,7 @@ namespace DataLoaders
 
         for (size_t n = 0; n < N; ++n)
         {
-            int label = 0;
+            size_t label = 0;
 
             if (m_hasLabel)
             {
@@ -109,9 +109,9 @@ namespace DataLoaders
             f.read(reinterpret_cast<char *>(tmp.data()), imageBytes);
 
             std::vector<float> &sample = m_allData[n];
-            for (int y = 0; y < m_height; ++y)
-                for (int x = 0; x < m_width; ++x)
-                    for (int c = 0; c < m_channels; ++c)
+            for (size_t y = 0; y < m_height; ++y)
+                for (size_t x = 0; x < m_width; ++x)
+                    for (size_t c = 0; c < m_channels; ++c)
                     {
                         size_t in = index(x, y, c, m_inputOrder);
                         size_t out = index(x, y, c, m_outputOrder);
@@ -199,17 +199,17 @@ namespace DataLoaders
             p_rng);
     }
 
-    const size_t BinImageDataLoader::getTotalSamples() const
+    size_t BinImageDataLoader::getTotalSamples() const
     {
         return m_allData.size();
     }
 
-    const size_t BinImageDataLoader::getInputSize() const
+    size_t BinImageDataLoader::getInputSize() const
     {
         return m_width * m_height * m_channels;
     }
 
-    const size_t BinImageDataLoader::getTargetSize() const
+    size_t BinImageDataLoader::getTargetSize() const
     {
         return m_hasLabel ? m_numClasses : 0;
     }

@@ -144,17 +144,17 @@ namespace DataLoaders
         std::shuffle(m_currentActiveIndices->begin(), m_currentActiveIndices->end(), p_rng);
     }
 
-    const size_t CSVNumericalLoader::getTotalSamples() const
+    size_t CSVNumericalLoader::getTotalSamples() const
     {
         return m_allData.size();
     }
 
-    const size_t CSVNumericalLoader::getInputSize() const
+    size_t CSVNumericalLoader::getInputSize() const
     {
         return m_numInputFeatures;
     }
 
-    const size_t CSVNumericalLoader::getTargetSize() const
+    size_t CSVNumericalLoader::getTargetSize() const
     {
         return m_numTargetFeatures;
     }

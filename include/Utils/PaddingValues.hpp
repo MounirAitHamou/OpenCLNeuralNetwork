@@ -9,13 +9,6 @@ namespace Utils
         {
             if (p_dimensions.size() == 4)
             {
-                for (const auto &dim : p_dimensions)
-                {
-                    if (dim < 0)
-                    {
-                        throw std::invalid_argument("Dimensions cannot be negative.");
-                    }
-                }
                 m_dimensions = p_dimensions;
             }
             else
@@ -28,13 +21,6 @@ namespace Utils
         {
             if (p_dimensions.size() == 4)
             {
-                for (const auto &dim : p_dimensions)
-                {
-                    if (dim < 0)
-                    {
-                        throw std::invalid_argument("Dimensions cannot be negative.");
-                    }
-                }
                 m_dimensions = p_dimensions;
             }
             else
@@ -45,10 +31,6 @@ namespace Utils
 
         PaddingValues(size_t p_padTop, size_t p_padBottom, size_t p_padLeft, size_t p_padRight)
         {
-            if (p_padTop < 0 || p_padBottom < 0 || p_padLeft < 0 || p_padRight < 0)
-            {
-                throw std::invalid_argument("Padding Values cannot be negative.");
-            }
             m_dimensions = {p_padTop, p_padBottom, p_padLeft, p_padRight};
         }
 

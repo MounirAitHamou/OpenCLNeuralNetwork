@@ -10,6 +10,40 @@ add_subdirectory(
     ${CMAKE_BINARY_DIR}/googletest_build
 )
 
+if (MSVC)
+
+    target_compile_options(gtest PRIVATE
+        $<$<CONFIG:Debug>:/fsanitize=address>
+    )
+    target_link_options(gtest PRIVATE
+        $<$<CONFIG:Debug>:/fsanitize=address>
+    )
+
+    target_compile_options(gtest_main PRIVATE
+        $<$<CONFIG:Debug>:/fsanitize=address>
+    )
+    target_link_options(gtest_main PRIVATE
+        $<$<CONFIG:Debug>:/fsanitize=address>
+    )
+
+else()
+
+    target_compile_options(gtest PRIVATE
+        $<$<CONFIG:Debug>:-fsanitize=address>
+    )
+    target_link_options(gtest PRIVATE
+        $<$<CONFIG:Debug>:-fsanitize=address>
+    )
+
+    target_compile_options(gtest_main PRIVATE
+        $<$<CONFIG:Debug>:-fsanitize=address>
+    )
+    target_link_options(gtest_main PRIVATE
+        $<$<CONFIG:Debug>:-fsanitize=address>
+    )
+
+endif()
+
 file(GLOB_RECURSE TEST_FILES "${CMAKE_CURRENT_SOURCE_DIR}/*Test.cpp")
 
 list(LENGTH TEST_FILES TEST_FILES_COUNT)
@@ -20,13 +54,53 @@ else()
 endif()
 
 set(test_name_list "")
+
 foreach(test_file IN LISTS TEST_FILES)
+
     get_filename_component(test_name ${test_file} NAME_WE)
     string(REPLACE "-" "_" test_name ${test_name})
 
     add_executable(${test_name} ${test_file})
-    target_link_libraries(${test_name} PRIVATE OpenCLNeuralNetworkLib gtest_main)
-    target_include_directories(${test_name} PRIVATE "${CMAKE_SOURCE_DIR}/include")
+
+    target_link_libraries(${test_name} PRIVATE
+        OpenCLNeuralNetworkLib
+        gtest_main
+    )
+
+    target_include_directories(${test_name} PRIVATE
+        "${CMAKE_SOURCE_DIR}/include"
+    )
+
+    if (MSVC)
+
+        target_compile_options(${test_name} PRIVATE
+            /W4
+            /permissive-
+            /EHsc
+            $<$<CONFIG:Debug>:/fsanitize=address>
+            $<$<CONFIG:Debug>:/RTC1>
+            $<$<CONFIG:Debug>:/Zi>
+        )
+
+        target_link_options(${test_name} PRIVATE
+            $<$<CONFIG:Debug>:/fsanitize=address>
+        )
+
+    else()
+
+        target_compile_options(${test_name} PRIVATE
+            -Wall
+            -Wextra
+            -Wpedantic
+            $<$<CONFIG:Debug>:-fsanitize=address>
+            $<$<CONFIG:Debug>:-g>
+        )
+
+        target_link_options(${test_name} PRIVATE
+            $<$<CONFIG:Debug>:-fsanitize=address>
+        )
+
+    endif()
 
     set_target_properties(${test_name} PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests"
@@ -34,6 +108,7 @@ foreach(test_file IN LISTS TEST_FILES)
 
     add_test(NAME ${test_name} COMMAND ${test_name})
     list(APPEND test_name_list ${test_name})
+
 endforeach()
 
 if(TEST_FILES_COUNT GREATER 0)

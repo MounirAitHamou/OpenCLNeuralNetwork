@@ -133,9 +133,9 @@ namespace Optimizers
                 size_t biasesSize = sizes.second;
                 std::string layerIdStr = std::to_string(layerId);
                 H5::Group layerGroup = momentBuffersGroup.createGroup(layerIdStr);
-                Utils::writeValueToHDF5<size_t>(layerGroup, "layerId", layerId);
-                Utils::writeValueToHDF5<size_t>(layerGroup, "weightsSize", weightsSize);
-                Utils::writeValueToHDF5<size_t>(layerGroup, "biasesSize", biasesSize);
+                Utils::writeValueToHDF5<uint64_t>(layerGroup, "layerId", static_cast<uint64_t>(layerId));
+                Utils::writeValueToHDF5<uint64_t>(layerGroup, "weightsSize", static_cast<uint64_t>(weightsSize));
+                Utils::writeValueToHDF5<uint64_t>(layerGroup, "biasesSize", static_cast<uint64_t>(biasesSize));
                 if (weightsSize > 0)
                 {
                     std::string weightKey = layerIdStr + "Weights";

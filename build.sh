@@ -1,8 +1,17 @@
+#!/usr/bin/env bash
 set -e
-set -o pipefail
 
-cd "$(dirname "$0")"
+MODE=$1
 
-bash setup.sh
+if [ -z "$MODE" ]; then
+    MODE=release
+fi
 
-bash runtests.sh
+if [[ "$MODE" != "debug" && "$MODE" != "release" ]]; then
+    echo "Usage: ./build.sh [debug|release]"
+    exit 1
+fi
+
+./setup.sh "$MODE"
+
+./runtests.sh "$MODE"

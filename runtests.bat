@@ -1,15 +1,31 @@
 @echo off
 setlocal
-echo Running tests...
-if not exist build (
-    echo Build directory not found. Please build the project first.
+
+set MODE=%1
+
+if "%MODE%"=="" set MODE=release
+
+if /I not "%MODE%"=="debug" if /I not "%MODE%"=="release" (
+    echo Usage: runtests.bat [debug^|release]
     exit /b 1
 )
 
-cd build
+echo Running tests in %MODE% mode with CTest...
 
-echo Running tests with CTest in Release mode...
-ctest --output-on-failure -C Release
+set BUILD_DIR=build-%MODE%
+
+if not exist "%BUILD_DIR%" (
+    echo Build directory "%BUILD_DIR%" not found. Please build the project first.
+    exit /b 1
+)
+
+cd "%BUILD_DIR%"
+
+if /I "%MODE%"=="debug" (
+    ctest --output-on-failure -C Debug
+) else (
+    ctest --output-on-failure -C Release
+)
 
 cd ..
 endlocal

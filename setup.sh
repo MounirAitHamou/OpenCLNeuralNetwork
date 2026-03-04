@@ -1,72 +1,61 @@
 #!/usr/bin/env bash
-set -euo pipefail
 
-# -------------------------------
-# Variables
-# -------------------------------
-VCPKG_ROOT="$PWD/vcpkg"
-BUILD_DIR="$PWD/build"
-PACKAGES=("opencl:x64-linux" "hdf5[cpp,hl]:x64-linux" "clblast:x64-linux")
+set -e
 
-# -------------------------------
-# Function: Check OpenCL devices
-# -------------------------------
-check_opencl_available() {
-    if command -v clinfo &> /dev/null; then
-        echo "OpenCL detected (first platforms/devices):"
-        # ignore clinfo exit code
-        clinfo | grep -E "Platform Name|Device Name" | head -n 10 || true
-    else
-        echo "Warning: clinfo not found. Your project may not run correctly without OpenCL runtime."
+MODE=$1
+
+if [ -z "$MODE" ]; then
+    MODE=release
+fi
+
+if [[ "$MODE" != "debug" && "$MODE" != "release" ]]; then
+    echo "Usage: ./setup.sh [debug|release]"
+    exit 1
+fi
+
+ROOT_DIR="$(pwd)"
+VCPKG_ROOT="$ROOT_DIR/vcpkg"
+BUILD_DIR="$ROOT_DIR/build-$MODE"
+
+if [ ! -d "$VCPKG_ROOT" ]; then
+    echo "Cloning vcpkg..."
+    git clone https://github.com/microsoft/vcpkg.git "$VCPKG_ROOT"
+    "$VCPKG_ROOT/bootstrap-vcpkg.sh"
+else
+    echo "vcpkg already exists"
+fi
+
+PACKAGES=(
+    opencl
+    hdf5[cpp,hl]
+    clblast
+)
+
+for PKG in "${PACKAGES[@]}"; do
+    if ! "$VCPKG_ROOT/vcpkg" list | grep -i "$PKG" > /dev/null; then
+        echo "Installing $PKG..."
+        "$VCPKG_ROOT/vcpkg" install "$PKG"
     fi
-}
+done
 
-# -------------------------------
-# Function: Setup vcpkg
-# -------------------------------
-setup_vcpkg() {
-    if [ ! -d "$VCPKG_ROOT" ]; then
-        echo "Cloning vcpkg..."
-        git clone https://github.com/microsoft/vcpkg.git "$VCPKG_ROOT"
-        echo "Bootstrapping vcpkg..."
-        "$VCPKG_ROOT/bootstrap-vcpkg.sh"
-    else
-        echo "vcpkg already exists, skipping clone"
-    fi
+mkdir -p "$BUILD_DIR"
 
-    for pkg in "${PACKAGES[@]}"; do
-        if ! "$VCPKG_ROOT/vcpkg" list | grep -iq "$pkg"; then
-            echo "Installing $pkg..."
-            "$VCPKG_ROOT/vcpkg" install "$pkg"
-        else
-            echo "Package $pkg already installed, skipping"
-        fi
-    done
-}
+if [ "$MODE" = "debug" ]; then
+    BUILD_TYPE=Debug
+    OUTPUT_DIR="$BUILD_DIR"
+else
+    BUILD_TYPE=Release
+    OUTPUT_DIR="$ROOT_DIR"
+fi
 
-# -------------------------------
-# Function: Build project
-# -------------------------------
-build_project() {
-    mkdir -p "$BUILD_DIR"
-    echo "Configuring CMake..."
-    cmake -S . -B "$BUILD_DIR" \
-        -DCMAKE_TOOLCHAIN_FILE=./vcpkg/scripts/buildsystems/vcpkg.cmake \
-        -DCMAKE_BUILD_TYPE=Release
+echo "Configuring $BUILD_TYPE build..."
 
-    echo "Building project..."
-    cmake --build "$BUILD_DIR" --config Release
-    echo "Build complete!"
-}
+cmake -S . -B "$BUILD_DIR" \
+    -G Ninja \
+    -DCMAKE_BUILD_TYPE=$BUILD_TYPE \
+    -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
+    -DCMAKE_RUNTIME_OUTPUT_DIRECTORY="$OUTPUT_DIR"
 
-# -------------------------------
-# Main
-# -------------------------------
-echo "=== Checking OpenCL runtime ==="
-check_opencl_available
+cmake --build "$BUILD_DIR"
 
-echo "=== Setting up vcpkg ==="
-setup_vcpkg
-
-echo "=== Building project ==="
-build_project
+echo "Build complete!"

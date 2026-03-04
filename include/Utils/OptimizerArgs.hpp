@@ -25,12 +25,12 @@ namespace Utils
 
         virtual void print() const = 0;
 
-        const float getLearningRate() const
+        float getLearningRate() const
         {
             return m_learningRate;
         }
 
-        const float getWeightDecayRate() const
+        float getWeightDecayRate() const
         {
             return m_weightDecayRate;
         }
@@ -72,17 +72,17 @@ namespace Utils
                               float p_beta1 = 0.9f, float p_beta2 = 0.999f, float p_epsilon = 1e-8f)
             : OptimizerArgs(p_learningRate, p_weightDecayRate), m_beta1(p_beta1), m_beta2(p_beta2), m_epsilon(p_epsilon) {}
 
-        const float getBeta1() const
+        float getBeta1() const
         {
             return m_beta1;
         }
 
-        const float getBeta2() const
+        float getBeta2() const
         {
             return m_beta2;
         }
 
-        const float getEpsilon() const
+        float getEpsilon() const
         {
             return m_epsilon;
         }

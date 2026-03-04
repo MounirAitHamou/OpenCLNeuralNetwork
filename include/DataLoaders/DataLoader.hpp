@@ -39,9 +39,9 @@ namespace DataLoaders
         }
         virtual void shuffleCurrentPartition(std::mt19937 &p_rng) = 0;
 
-        virtual const size_t getTotalSamples() const = 0;
-        virtual const size_t getInputSize() const = 0;
-        virtual const size_t getTargetSize() const = 0;
+        virtual size_t getTotalSamples() const = 0;
+        virtual size_t getInputSize() const = 0;
+        virtual size_t getTargetSize() const = 0;
 
         virtual const std::vector<size_t> getTrainIndices() const = 0;
         virtual const std::vector<size_t> getValidationIndices() const = 0;
@@ -67,11 +67,11 @@ namespace DataLoaders
         DataLoaderIterator end();
 
     protected:
+        std::shared_ptr<Utils::SharedResources> m_sharedResources;
+
         size_t m_batchSize;
         std::vector<std::vector<float>> m_allData;
         std::vector<size_t> *m_currentActiveIndices = nullptr;
-
-        std::shared_ptr<Utils::SharedResources> m_sharedResources;
 
         std::vector<size_t> m_trainIndices;
         std::vector<size_t> m_validationIndices;

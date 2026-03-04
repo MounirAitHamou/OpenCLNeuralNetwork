@@ -1,14 +1,24 @@
 @echo off
 setlocal
 
-set VCPKG_ROOT=%CD%\vcpkg
-set BUILD_DIR=%CD%\build
+set MODE=%1
+
+if "%MODE%"=="" (
+    set MODE=release
+)
+
+if /I not "%MODE%"=="debug" if /I not "%MODE%"=="release" (
+    echo Usage: setup.bat [debug^|release]
+    exit /b 1
+)
+
 set ROOT_DIR=%CD%
+set VCPKG_ROOT=%ROOT_DIR%\vcpkg
+set BUILD_DIR=%ROOT_DIR%\build-%MODE%
 
 if not exist "%VCPKG_ROOT%" (
     echo Cloning vcpkg...
     git clone https://github.com/microsoft/vcpkg.git "%VCPKG_ROOT%"
-    echo Bootstrapping vcpkg...
     call "%VCPKG_ROOT%\bootstrap-vcpkg.bat"
 ) else (
     echo vcpkg already exists
@@ -21,24 +31,30 @@ for %%P in (%PACKAGES%) do (
     if errorlevel 1 (
         echo Installing %%P...
         call "%VCPKG_ROOT%\vcpkg.exe" install %%P
-    ) else (
-        echo Package %%P already installed
     )
+)
+
+if /I "%MODE%"=="debug" (
+    set BUILD_TYPE=Debug
+    set OUTPUT_DIR=%BUILD_DIR%
+) else (
+    set BUILD_TYPE=Release
+    set OUTPUT_DIR=%ROOT_DIR%
 )
 
 if not exist "%BUILD_DIR%" mkdir "%BUILD_DIR%"
 
-echo Configuring CMake...
+echo Configuring %BUILD_TYPE% build...
+
 cmake -S . -B "%BUILD_DIR%" ^
     -G Ninja ^
     -DCMAKE_C_COMPILER=cl ^
     -DCMAKE_CXX_COMPILER=cl ^
     -DCMAKE_TOOLCHAIN_FILE="%VCPKG_ROOT%\scripts\buildsystems\vcpkg.cmake" ^
-    -DCMAKE_BUILD_TYPE=Release ^
-    -DCMAKE_RUNTIME_OUTPUT_DIRECTORY=%ROOT_DIR%
+    -DCMAKE_BUILD_TYPE=%BUILD_TYPE% ^
+    -DCMAKE_RUNTIME_OUTPUT_DIRECTORY=%OUTPUT_DIR%
 
-echo Building project...
-cmake --build "%BUILD_DIR%" --config Release
+cmake --build "%BUILD_DIR%"
 
 echo Build complete!
 

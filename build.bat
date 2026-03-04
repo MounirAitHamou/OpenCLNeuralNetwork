@@ -1,7 +1,13 @@
 @echo off
 setlocal
 
-call setup.bat
-call runtests.bat
+set MODE=%1
+
+if "%MODE%"=="" (
+    set MODE=release
+)
+
+call setup.bat %MODE%
+call runtests.bat %MODE%
 
 endlocal

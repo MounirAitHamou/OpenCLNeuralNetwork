@@ -26,9 +26,9 @@ namespace DataLoaders
             shuffleCurrentPartition(rng);
         }
         void shuffleCurrentPartition(std::mt19937 &p_rng) override;
-        const size_t getTotalSamples() const override;
-        const size_t getInputSize() const override;
-        const size_t getTargetSize() const override;
+        size_t getTotalSamples() const override;
+        size_t getInputSize() const override;
+        size_t getTargetSize() const override;
 
         const std::vector<size_t> getTrainIndices() const override;
         const std::vector<size_t> getValidationIndices() const override;

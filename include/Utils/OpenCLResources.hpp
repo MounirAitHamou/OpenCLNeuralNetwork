@@ -153,8 +153,8 @@ namespace Utils
         hsize_t dims[1] = {data.size()};
         H5::DataSpace space(1, dims);
 
-        const H5::PredType &h5Type =
-            []() -> const H5::PredType &
+        const H5::PredType h5Type =
+            []() -> const H5::PredType
         {
             if constexpr (std::is_same_v<T, int>)
             {
@@ -163,6 +163,10 @@ namespace Utils
             else if constexpr (std::is_same_v<T, size_t>)
             {
                 return H5::PredType::NATIVE_HSIZE;
+            }
+            else if constexpr (std::is_same_v<T, uint64_t>)
+            {
+                return H5::PredType::NATIVE_UINT64;
             }
             else if constexpr (std::is_same_v<T, float>)
             {
@@ -218,16 +222,16 @@ namespace Utils
             group.removeAttr(attrName);
         }
 
-        const H5::PredType &h5Type =
-            []() -> const H5::PredType &
+        H5::PredType h5Type =
+            []() -> H5::PredType
         {
             if constexpr (std::is_same_v<T, int>)
             {
                 return H5::PredType::NATIVE_INT;
             }
-            else if constexpr (std::is_same_v<T, size_t>)
+            else if constexpr (std::is_same_v<T, uint64_t>)
             {
-                return H5::PredType::NATIVE_HSIZE;
+                return H5::PredType::NATIVE_UINT64;
             }
             else if constexpr (std::is_same_v<T, float>)
             {

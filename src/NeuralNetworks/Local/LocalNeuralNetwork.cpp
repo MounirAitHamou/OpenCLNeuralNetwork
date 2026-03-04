@@ -360,7 +360,7 @@ namespace NeuralNetworks::Local
         Utils::writeVectorToHDF5<size_t>(file, "inputDimensions", m_inputDimensions.getDimensions());
 
         H5::Group layersGroup(file.createGroup("/layers"));
-        Utils::writeValueToHDF5<size_t>(layersGroup, "numLayers", m_layers.size());
+        Utils::writeValueToHDF5<uint64_t>(layersGroup, "numLayers", static_cast<uint64_t>(m_layers.size()));
 
         std::map<size_t, std::pair<size_t, size_t>> parameterSizes;
         size_t layerId;

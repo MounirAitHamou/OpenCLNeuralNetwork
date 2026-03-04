@@ -19,8 +19,8 @@ namespace Layers
               std::shared_ptr<Utils::SharedResources> p_sharedResources,
               const Utils::Dimensions &p_outputDimensions,
               const size_t p_batchSize)
-            : m_sharedResources(p_sharedResources),
-              m_layerId(p_layerId),
+            : m_layerId(p_layerId),
+              m_sharedResources(p_sharedResources),
               m_outputDimensions(p_outputDimensions)
         {
             allocateLayerBuffers(p_batchSize);
@@ -75,14 +75,11 @@ namespace Layers
 
     protected:
         size_t m_layerId;
+        std::shared_ptr<Utils::SharedResources> m_sharedResources;
         size_t m_batchSize;
-
         Utils::Dimensions m_outputDimensions;
-
         cl::Buffer m_outputs;
         cl::Buffer m_deltas;
-
-        std::shared_ptr<Utils::SharedResources> m_sharedResources;
 
         virtual void setupKernels() = 0;
 
@@ -97,7 +94,7 @@ namespace Layers
 
         void saveLayer(H5::Group &p_layerGroup) const
         {
-            Utils::writeValueToHDF5<size_t>(p_layerGroup, "layerId", m_layerId);
+            Utils::writeValueToHDF5<uint64_t>(p_layerGroup, "layerId", static_cast<uint64_t>(m_layerId));
             Utils::writeValueToHDF5<unsigned int>(p_layerGroup, "layerType", static_cast<unsigned int>(getType()));
             Utils::writeVectorToHDF5<size_t>(p_layerGroup, "outputDimensions", m_outputDimensions.getDimensions());
         }

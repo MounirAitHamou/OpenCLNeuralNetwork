@@ -71,11 +71,9 @@ namespace Optimizers
         virtual void step() {}
 
     protected:
+        std::shared_ptr<Utils::SharedResources> m_sharedResources;
         float m_learningRate;
         float m_weightDecayRate;
-
-        std::shared_ptr<Utils::SharedResources> m_sharedResources;
-
         cl::Kernel m_updateKernel;
 
         virtual void setupKernels() = 0;

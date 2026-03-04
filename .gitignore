@@ -1,4 +1,4 @@
-/build
+/build-debug
 *.h5
 .vscode/settings.json
 /vcpkg
@@ -9,3 +9,5 @@
 *.obj
 *.dll
 .vscode/settings.json
+*.pdb
+/build-release
