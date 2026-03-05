@@ -127,6 +127,7 @@ int makeXORModel(Utils::OpenCLResources oclResources, const std::string p_fileNa
     else
     {
         loadedNet = NeuralNetworks::Local::LocalNeuralNetwork::load(oclResources.getSharedResources(), p_fileName, batchSize);
+        std::cout << "Loaded network from file\n";
     }
 
     return 0;
