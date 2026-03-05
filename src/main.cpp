@@ -215,6 +215,7 @@ int makeCIFARModel(Utils::OpenCLResources oclResources, const std::string p_file
             oclResources.getSharedResources(),
             p_fileName,
             batchSize);
+        std::cout << "Loaded network from file\n";
     }
 
     return 0;
