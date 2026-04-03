@@ -1,0 +1,12 @@
+/build-debug
+*.h5
+.vscode/settings.json
+/vcpkg
+/.vs
+/out
+*.exe
+*.obj
+*.dll
+.vscode/settings.json
+*.pdb
+/build-release
