@@ -13,7 +13,7 @@ namespace Utils
             }
             else
             {
-                throw std::invalid_argument("Padding Values require a 4-dimensional vector.");
+                CLNN_FATAL("Padding Values require a 4-dimensional vector.");
             }
         }
 
@@ -25,7 +25,7 @@ namespace Utils
             }
             else
             {
-                throw std::invalid_argument("Padding Values require a 4-dimensional vector.");
+                CLNN_FATAL("Padding Values require a 4-dimensional vector.");
             }
         }
 

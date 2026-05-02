@@ -68,10 +68,10 @@ namespace DataLoaders
             size_t p_x, size_t p_y, size_t p_c,
             DataOrder p_o) const;
 
-        Utils::Dimensions getInputDimensions(
+        static Utils::Dimensions getInputDimensions(
             size_t p_channels,
             size_t p_height,
             size_t p_width,
-            DataOrder p_o) const;
+            DataOrder p_o);
     };
 }

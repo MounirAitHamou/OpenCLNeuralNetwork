@@ -8,10 +8,10 @@ namespace Utils
         std::unique_ptr<OptimizerArgs> p_optimizerArguments,
         std::unique_ptr<LossFunctionArgs> p_lossFunctionArguments)
     {
-        return NetworkArgs(
+        return {
             p_initialInputDimensions,
             std::move(p_layerArguments),
             std::move(p_optimizerArguments),
-            std::move(p_lossFunctionArguments));
+            std::move(p_lossFunctionArguments)};
     }
 }

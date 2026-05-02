@@ -5,6 +5,7 @@
 #include <functional>
 #include <map>
 #include <string>
+#include <utility>
 #include "Utils/LossFunctionArgs.hpp"
 #include "Utils/Dimensions.hpp"
 #include "Utils/FilterDimensions.hpp"
@@ -50,36 +51,46 @@ static std::vector<float> cpuDenseForward(
     const std::vector<float> &inputs,
     const std::vector<float> &weights,
     const std::vector<float> &biases,
-    LayerDims dims)
+    const LayerDims &dims)
 {
     size_t B = dims.batchSize;
     size_t in = dims.inputDims.getTotalElements();
     size_t out = dims.outputDims.getTotalElements();
-    std::vector<float> y(B * out, 0.0f);
+    std::vector<float> y(B * out, 0.0F);
     for (size_t b = 0; b < B; ++b)
+    {
         for (size_t o = 0; o < out; ++o)
         {
             float acc = biases[o];
             for (size_t i = 0; i < in; ++i)
-                acc += inputs[b * in + i] * weights[o * in + i];
-            y[b * out + o] = acc;
+            {
+                acc += inputs[(b * in) + i] * weights[(o * in) + i];
+            }
+            y[(b * out) + o] = acc;
         }
+    }
     return y;
 }
 
 static std::vector<float> cpuDenseBackpropDeltas(
     const std::vector<float> &deltas,
     const std::vector<float> &weights,
-    LayerDims dims)
+    const LayerDims &dims)
 {
     size_t B = dims.batchSize;
     size_t in = dims.inputDims.getTotalElements();
     size_t out = dims.outputDims.getTotalElements();
-    std::vector<float> prev(B * in, 0.0f);
+    std::vector<float> prev(B * in, 0.0F);
     for (size_t b = 0; b < B; ++b)
+    {
         for (size_t i = 0; i < in; ++i)
+        {
             for (size_t o = 0; o < out; ++o)
-                prev[b * in + i] += deltas[b * out + o] * weights[o * in + i];
+            {
+                prev[(b * in) + i] += deltas[(b * out) + o] * weights[(o * in) + i];
+            }
+        }
+    }
     return prev;
 }
 
@@ -87,33 +98,37 @@ static std::pair<std::vector<float>, std::vector<float>>
 cpuDenseGradients(
     const std::vector<float> &inputs,
     const std::vector<float> &deltas,
-    LayerDims dims)
+    const LayerDims &dims)
 {
     size_t B = dims.batchSize;
     size_t in = dims.inputDims.getTotalElements();
     size_t out = dims.outputDims.getTotalElements();
-    std::vector<float> weightGrad(out * in, 0.0f);
-    std::vector<float> biasGrad(out, 0.0f);
+    std::vector<float> weightGrad(out * in, 0.0F);
+    std::vector<float> biasGrad(out, 0.0F);
 
     for (size_t b = 0; b < B; ++b)
     {
         for (size_t o = 0; o < out; ++o)
         {
-            float d = deltas[b * out + o];
+            float d = deltas[(b * out) + o];
             biasGrad[o] += d;
 
             for (size_t i = 0; i < in; ++i)
             {
-                weightGrad[o * in + i] += d * inputs[b * in + i];
+                weightGrad[(o * in) + i] += d * inputs[(b * in) + i];
             }
         }
     }
 
-    const float invB = 1.0f / static_cast<float>(B);
+    const float invB = 1.0F / static_cast<float>(B);
     for (auto &g : weightGrad)
+    {
         g *= invB;
+    }
     for (auto &g : biasGrad)
+    {
         g *= invB;
+    }
 
     return {weightGrad, biasGrad};
 }
@@ -122,7 +137,7 @@ static std::vector<float> cpuConvForward(
     const std::vector<float> &input,
     const std::vector<float> &weights,
     const std::vector<float> &bias,
-    LayerDims dims)
+    const LayerDims &dims)
 {
     size_t B = dims.batchSize;
     size_t IC = dims.inputDims.getDimensions()[0];
@@ -137,48 +152,60 @@ static std::vector<float> cpuConvForward(
     size_t strideW = dims.strideDims.getWidth();
     size_t padH = dims.paddingVals.getTop();
     size_t padW = dims.paddingVals.getLeft();
-    std::vector<float> out(B * OC * OH * OW, 0.0f);
+    std::vector<float> out(B * OC * OH * OW, 0.0F);
 
     for (size_t b = 0; b < B; ++b)
+    {
         for (size_t oc = 0; oc < OC; ++oc)
+        {
             for (size_t oh = 0; oh < OH; ++oh)
+            {
                 for (size_t ow = 0; ow < OW; ++ow)
                 {
 
                     float acc = bias[oc];
 
                     for (size_t ic = 0; ic < IC; ++ic)
+                    {
                         for (size_t fh = 0; fh < FH; ++fh)
+                        {
                             for (size_t fw = 0; fw < FW; ++fw)
                             {
 
-                                int ih = int(oh * strideH) - int(padH) + int(fh);
-                                int iw = int(ow * strideW) - int(padW) + int(fw);
+                                int ih = static_cast<int>(oh * strideH) - static_cast<int>(padH) + static_cast<int>(fh);
+                                int iw = static_cast<int>(ow * strideW) - static_cast<int>(padW) + static_cast<int>(fw);
 
-                                if (ih < 0 || ih >= int(IH) ||
-                                    iw < 0 || iw >= int(IW))
+                                if (ih < 0 || std::cmp_greater_equal(ih, IH) ||
+                                    iw < 0 || std::cmp_greater_equal(iw, IW))
+                                {
                                     continue;
+                                }
 
                                 size_t inIdx =
-                                    b * IC * IH * IW +
-                                    ic * IH * IW +
-                                    ih * IW +
+                                    (b * IC * IH * IW) +
+                                    (ic * IH * IW) +
+                                    (ih * IW) +
                                     iw;
 
                                 size_t wIdx =
-                                    oc * IC * FH * FW +
-                                    ic * FH * FW +
-                                    fh * FW +
+                                    (oc * IC * FH * FW) +
+                                    (ic * FH * FW) +
+                                    (fh * FW) +
                                     fw;
 
                                 acc += input[inIdx] * weights[wIdx];
                             }
+                        }
+                    }
 
-                    out[b * OC * OH * OW +
-                        oc * OH * OW +
-                        oh * OW +
+                    out[(b * OC * OH * OW) +
+                        (oc * OH * OW) +
+                        (oh * OW) +
                         ow] = acc;
                 }
+            }
+        }
+    }
 
     return out;
 }
@@ -186,7 +213,7 @@ static std::vector<float> cpuConvForward(
 static std::vector<float> cpuConvBackpropDeltas(
     const std::vector<float> &deltas,
     const std::vector<float> &weights,
-    LayerDims dims)
+    const LayerDims &dims)
 {
     size_t B = dims.batchSize;
     size_t IC = dims.inputDims.getDimensions()[0];
@@ -201,36 +228,46 @@ static std::vector<float> cpuConvBackpropDeltas(
     size_t strideW = dims.strideDims.getWidth();
     size_t padH = dims.paddingVals.getTop();
     size_t padW = dims.paddingVals.getLeft();
-    std::vector<float> prevDeltas(B * IC * IH * IW, 0.0f);
+    std::vector<float> prevDeltas(B * IC * IH * IW, 0.0F);
 
     for (size_t b = 0; b < B; ++b)
+    {
         for (size_t oc = 0; oc < OC; ++oc)
+        {
             for (size_t oh = 0; oh < OH; ++oh)
+            {
                 for (size_t ow = 0; ow < OW; ++ow)
                 {
-                    float dOut = deltas[b * OC * OH * OW + oc * OH * OW + oh * OW + ow];
+                    float dOut = deltas[(b * OC * OH * OW) + (oc * OH * OW) + (oh * OW) + ow];
                     for (size_t ic = 0; ic < IC; ++ic)
+                    {
                         for (size_t fh = 0; fh < FH; ++fh)
+                        {
                             for (size_t fw = 0; fw < FW; ++fw)
                             {
-                                int ih = int(oh * strideH) - int(padH) + int(fh);
-                                int iw = int(ow * strideW) - int(padW) + int(fw);
+                                int ih = static_cast<int>(oh * strideH) - static_cast<int>(padH) + static_cast<int>(fh);
+                                int iw = static_cast<int>(ow * strideW) - static_cast<int>(padW) + static_cast<int>(fw);
 
-                                if (ih >= 0 && ih < int(IH) && iw >= 0 && iw < int(IW))
+                                if (ih >= 0 && std::cmp_less(ih, IH) && iw >= 0 && std::cmp_less(iw, IW))
                                 {
-                                    size_t inIdx = b * IC * IH * IW + ic * IH * IW + ih * IW + iw;
-                                    size_t wIdx = oc * IC * FH * FW + ic * FH * FW + fh * FW + fw;
+                                    size_t inIdx = (b * IC * IH * IW) + (ic * IH * IW) + (ih * IW) + iw;
+                                    size_t wIdx = (oc * IC * FH * FW) + (ic * FH * FW) + (fh * FW) + fw;
                                     prevDeltas[inIdx] += dOut * weights[wIdx];
                                 }
                             }
+                        }
+                    }
                 }
+            }
+        }
+    }
     return prevDeltas;
 }
 
 static std::pair<std::vector<float>, std::vector<float>> cpuConvGradients(
     const std::vector<float> &inputs,
     const std::vector<float> &deltas,
-    LayerDims dims)
+    const LayerDims &dims)
 {
     size_t B = dims.batchSize;
     size_t IC = dims.inputDims.getDimensions()[0];
@@ -245,36 +282,50 @@ static std::pair<std::vector<float>, std::vector<float>> cpuConvGradients(
     size_t strideW = dims.strideDims.getWidth();
     size_t padH = dims.paddingVals.getTop();
     size_t padW = dims.paddingVals.getLeft();
-    std::vector<float> dw(OC * IC * FH * FW, 0.0f);
-    std::vector<float> db(OC, 0.0f);
+    std::vector<float> dw(OC * IC * FH * FW, 0.0F);
+    std::vector<float> db(OC, 0.0F);
 
     for (size_t b = 0; b < B; ++b)
+    {
         for (size_t oc = 0; oc < OC; ++oc)
+        {
             for (size_t oh = 0; oh < OH; ++oh)
+            {
                 for (size_t ow = 0; ow < OW; ++ow)
                 {
-                    float dOut = deltas[b * OC * OH * OW + oc * OH * OW + oh * OW + ow];
+                    float dOut = deltas[(b * OC * OH * OW) + (oc * OH * OW) + (oh * OW) + ow];
                     db[oc] += dOut;
                     for (size_t ic = 0; ic < IC; ++ic)
+                    {
                         for (size_t fh = 0; fh < FH; ++fh)
+                        {
                             for (size_t fw = 0; fw < FW; ++fw)
                             {
-                                int ih = int(oh * strideH) - int(padH) + int(fh);
-                                int iw = int(ow * strideW) - int(padW) + int(fw);
+                                int ih = static_cast<int>(oh * strideH) - static_cast<int>(padH) + static_cast<int>(fh);
+                                int iw = static_cast<int>(ow * strideW) - static_cast<int>(padW) + static_cast<int>(fw);
 
-                                if (ih >= 0 && ih < int(IH) && iw >= 0 && iw < int(IW))
+                                if (ih >= 0 && std::cmp_less(ih, IH) && iw >= 0 && std::cmp_less(iw, IW))
                                 {
-                                    size_t inIdx = b * IC * IH * IW + ic * IH * IW + ih * IW + iw;
-                                    size_t wIdx = oc * IC * FH * FW + ic * FH * FW + fh * FW + fw;
+                                    size_t inIdx = (b * IC * IH * IW) + (ic * IH * IW) + (ih * IW) + iw;
+                                    size_t wIdx = (oc * IC * FH * FW) + (ic * FH * FW) + (fh * FW) + fw;
                                     dw[wIdx] += dOut * inputs[inIdx];
                                 }
                             }
+                        }
+                    }
                 }
+            }
+        }
+    }
 
     for (auto &val : dw)
+    {
         val /= static_cast<float>(B);
+    }
     for (auto &val : db)
+    {
         val /= static_cast<float>(B);
+    }
     return {dw, db};
 }
 
@@ -282,49 +333,49 @@ static std::vector<float> cpuForward(
     const std::vector<float> &input,
     const std::vector<float> &weights,
     const std::vector<float> &bias,
-    LayerDims dims)
+    const LayerDims &dims)
 {
     if (dims.type == LayerType::Dense)
     {
         return cpuDenseForward(input, weights, bias, dims);
     }
-    else if (dims.type == LayerType::Convolutional)
+    if (dims.type == LayerType::Convolutional)
     {
         return cpuConvForward(input, weights, bias, dims);
     }
-    throw std::invalid_argument("Unsupported layer type for cpuForward.");
+    CLNN_FATAL("Unsupported layer type for cpuForward.");
 }
 
 static std::vector<float> cpuBackpropDeltas(
     const std::vector<float> &deltas,
     const std::vector<float> &weights,
-    LayerDims dims)
+    const LayerDims &dims)
 {
     if (dims.type == LayerType::Dense)
     {
         return cpuDenseBackpropDeltas(deltas, weights, dims);
     }
-    else if (dims.type == LayerType::Convolutional)
+    if (dims.type == LayerType::Convolutional)
     {
         return cpuConvBackpropDeltas(deltas, weights, dims);
     }
-    throw std::invalid_argument("Unsupported layer type for cpuBackpropDeltas.");
+    CLNN_FATAL("Unsupported layer type for cpuBackpropDeltas.");
 }
 
 static std::pair<std::vector<float>, std::vector<float>> cpuComputeGradients(
     const std::vector<float> &inputs,
     const std::vector<float> &deltas,
-    LayerDims dims)
+    const LayerDims &dims)
 {
     if (dims.type == LayerType::Dense)
     {
         return cpuDenseGradients(inputs, deltas, dims);
     }
-    else if (dims.type == LayerType::Convolutional)
+    if (dims.type == LayerType::Convolutional)
     {
         return cpuConvGradients(inputs, deltas, dims);
     }
-    throw std::invalid_argument("Unsupported layer type for cpuComputeGradients.");
+    CLNN_FATAL("Unsupported layer type for cpuComputeGradients.");
 }
 
 class ConvDenseIntegrationTest : public ::testing::Test
@@ -333,35 +384,35 @@ protected:
     OpenCLResources ocl = OpenCLResources::createOpenCLResources();
     std::mt19937 rng{12345};
 
-    ConvDenseIntegrationTest()
-    {
-    }
+    ConvDenseIntegrationTest() = default;
 
     std::vector<float> randomVec(size_t n)
     {
-        std::uniform_real_distribution<float> dist(-1.f, 1.f);
+        std::uniform_real_distribution<float> dist(-1.F, 1.F);
         std::vector<float> v(n);
         for (auto &x : v)
+        {
             x = dist(rng);
+        }
         return v;
     }
 
-    LayerDims generateLayerDims(TrainableLayer *layer)
+    static LayerDims generateLayerDims(TrainableLayer *layer)
     {
         if (layer->getType() == Utils::LayerType::Dense)
         {
-            DenseLayer *dense = dynamic_cast<DenseLayer *>(layer);
-            return LayerDims(dense);
+            auto *dense = dynamic_cast<DenseLayer *>(layer);
+            return {dense};
         }
         if (layer->getType() == Utils::LayerType::Convolutional)
         {
-            ConvolutionalLayer *conv = dynamic_cast<ConvolutionalLayer *>(layer);
-            return LayerDims(conv);
+            auto *conv = dynamic_cast<ConvolutionalLayer *>(layer);
+            return {conv};
         }
-        throw std::invalid_argument("Unsupported layer type for generating LayerDims.");
+        CLNN_FATAL("Unsupported layer type for generating LayerDims.");
     }
 
-    std::vector<float> meanSquaredError(
+    static std::vector<float> meanSquaredError(
         const std::vector<float> &predictions,
         const std::vector<float> &targets,
         size_t batchSize)
@@ -370,12 +421,12 @@ protected:
         std::vector<float> lossGrad(n);
         for (size_t i = 0; i < n; ++i)
         {
-            lossGrad[i] = 2.0f * (predictions[i] - targets[i]) / static_cast<float>(n / batchSize);
+            lossGrad[i] = 2.0F * (predictions[i] - targets[i]) / static_cast<float>(n / batchSize);
         }
         return lossGrad;
     }
 
-    std::vector<float> cpuLossFunction(
+    static std::vector<float> cpuLossFunction(
         const std::vector<float> &predictions,
         const std::vector<float> &targets,
         Utils::LossFunctionType lossFunction,
@@ -385,10 +436,10 @@ protected:
         {
             return meanSquaredError(predictions, targets, batchSize);
         }
-        throw std::invalid_argument("Unsupported loss function type for cpuLossFunction.");
+        CLNN_FATAL("Unsupported loss function type for cpuLossFunction.");
     }
 
-    std::map<std::string, std::vector<float>> cpuForwardBackwardRun(
+    static std::map<std::string, std::vector<float>> cpuForwardBackwardRun(
         TrainableLayer *layer1,
         TrainableLayer *layer2,
         Utils::LossFunctionType lossFunction,
@@ -411,7 +462,7 @@ protected:
         std::vector<float> lossGrad = cpuLossFunction(layer2Out, targetBuf, lossFunction, B);
         results["lossGradient"] = lossGrad;
 
-        std::vector<float> layer2Deltas = lossGrad;
+        const std::vector<float> &layer2Deltas = lossGrad;
         std::vector<float> layer1Deltas = cpuBackpropDeltas(layer2Deltas, layer2->getWeightsCPU(p_ocl.getForwardBackpropQueue()), dims2);
         results["layer1BackwardDeltas"] = layer1Deltas;
 
@@ -429,7 +480,7 @@ protected:
         return results;
     }
 
-    std::map<std::string, std::vector<float>> gpuForwardBackwardRun(
+    static std::map<std::string, std::vector<float>> gpuForwardBackwardRun(
         TrainableLayer *layer1,
         TrainableLayer *layer2,
         LossFunction *lossFunction,
@@ -439,7 +490,7 @@ protected:
         OpenCLResources &p_ocl)
     {
         std::map<std::string, std::vector<float>> results;
-        auto &q = p_ocl.getForwardBackpropQueue();
+        const auto &q = p_ocl.getForwardBackpropQueue();
         cl::Buffer inputCLBuf = cl::Buffer(
             p_ocl.getSharedResources()->getContext(),
             CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
@@ -535,8 +586,8 @@ protected:
 
     std::pair<std::unique_ptr<TrainableLayer>, std::unique_ptr<TrainableLayer>> createTestLayers(
         std::pair<std::unique_ptr<Utils::LayerArgs>, std::unique_ptr<Utils::LayerArgs>> layerArgsPair,
-        std::shared_ptr<Utils::SharedResources> sharedResources,
-        Utils::Dimensions inputDimensions,
+        const std::shared_ptr<Utils::SharedResources> &sharedResources,
+        const Utils::Dimensions &inputDimensions,
         size_t batchSize)
     {
         auto layer1 = layerArgsPair.first->createLayer(
@@ -554,9 +605,9 @@ protected:
         auto *tl1 = dynamic_cast<TrainableLayer *>(layer1.get());
         auto *tl2 = dynamic_cast<TrainableLayer *>(layer2.get());
 
-        if (!tl1 || !tl2)
+        if (tl1 == nullptr || tl2 == nullptr)
         {
-            throw std::invalid_argument(
+            CLNN_FATAL(
                 "Both layers must be TrainableLayer for ConvDenseIntegrationTest.");
         }
 
@@ -614,7 +665,7 @@ protected:
             batchSize,
             ocl);
 
-        float tolerance = 5e-4f;
+        float tolerance = 5e-4F;
 
         const std::vector<std::string> keys = {
             "layer1ForwardOutput",
@@ -751,7 +802,7 @@ TEST_P(ConvStressTest, ConvDenseGeometryStress)
         layer1.get(), layer2.get(), lossFn.get(),
         input, target, cfg.batch, ocl);
 
-    const float tol = 5e-4f;
+    const float tol = 5e-4F;
 
     for (const auto &[key, cpuVec] : cpu)
     {

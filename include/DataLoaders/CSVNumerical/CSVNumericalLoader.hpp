@@ -1,6 +1,7 @@
 #pragma once
 
 #include <charconv>
+#include <ranges>
 #include "DataLoaders/DataLoader.hpp"
 
 namespace DataLoaders
@@ -56,7 +57,7 @@ namespace DataLoaders
         size_t m_numInputFeatures = 0;
         size_t m_numTargetFeatures = 0;
 
-        std::vector<float> parseCSVLine(const std::string &p_line) const;
+        static std::vector<float> parseCSVLine(const std::string &p_line);
         void processHeader(const std::string &p_headerLine);
     };
 }

@@ -27,8 +27,8 @@ namespace NeuralNetworks::Local
         H5::DataSet dataset = p_file.openDataSet("rngState");
         H5::DataSpace dataspace = dataset.getSpace();
 
-        hsize_t dims[1];
-        dataspace.getSimpleExtentDims(dims, nullptr);
+        std::array<hsize_t, 1> dims;
+        dataspace.getSimpleExtentDims(dims.data(), nullptr);
 
         std::string state(dims[0], '\0');
         dataset.read(state.data(), H5::PredType::NATIVE_CHAR);
@@ -39,9 +39,13 @@ namespace NeuralNetworks::Local
         H5::Group layersGroup = p_file.openGroup("layers");
         size_t numLayers;
         if (layersGroup.attrExists("numLayers"))
+        {
             layersGroup.openAttribute("numLayers").read(H5::PredType::NATIVE_HSIZE, &numLayers);
+        }
         else
+        {
             numLayers = 0;
+        }
 
         for (size_t i = 0; i < numLayers; ++i)
         {
@@ -76,19 +80,19 @@ namespace NeuralNetworks::Local
     {
         if (p_batch.getInputDimensions() != m_inputDimensions)
         {
-            throw std::invalid_argument("Input dimensions of the batch do not match the network's input dimensions.");
+            CLNN_FATAL("Input dimensions of the batch do not match the network's input dimensions.");
         }
         if (!p_batch.hasTargets())
         {
-            throw std::invalid_argument("Batch has no target values.");
+            CLNN_FATAL("Batch has no target values.");
         }
-        cl::Buffer inputs = p_batch.getInputs();
-        cl::Buffer targets = p_batch.getTargets();
+        const cl::Buffer &inputs = p_batch.getInputs();
+        const cl::Buffer &targets = p_batch.getTargets();
         size_t batchSize = p_batch.getSize();
         cl::Event forwardEvent = forward(inputs, batchSize);
         double loss = -1.0;
         std::future<double> lossFuture;
-        if (p_lossReporting == true)
+        if (p_lossReporting)
         {
             lossFuture = std::async(std::launch::async, &LocalNeuralNetwork::computeLossAsync, this, std::ref(forwardEvent), p_batch.getTargetsVector(), batchSize);
         }
@@ -138,7 +142,9 @@ namespace NeuralNetworks::Local
     cl::Event LocalNeuralNetwork::forward(const cl::Buffer &p_batchInputs, size_t p_batchSize)
     {
         if (m_batchSize < p_batchSize)
+        {
             setBatchSize(p_batchSize);
+        }
         cl::Buffer currentInput = p_batchInputs;
         cl::Event lastEvent{};
         for (auto &layer : m_layers)
@@ -151,7 +157,7 @@ namespace NeuralNetworks::Local
 
     double LocalNeuralNetwork::computeLossAsync(cl::Event p_forwardEvent, const std::vector<float> &p_batchTargets, const size_t p_batchSize)
     {
-        std::vector<cl::Event> waitList = {p_forwardEvent};
+        std::vector<cl::Event> waitList = {std::move(p_forwardEvent)};
         return m_lossFunction->computeLoss(m_oclResources->getConcurrentQueue(),
                                            waitList,
                                            m_layers.back()->getOutputs(),
@@ -196,15 +202,19 @@ namespace NeuralNetworks::Local
     void LocalNeuralNetwork::backward(cl::Event p_deltaEvent, const cl::Buffer &p_batchInputs, const size_t p_batchSize)
     {
         if (m_layers.empty())
-            return;
-        if (m_batchSize < p_batchSize)
-            setBatchSize(p_batchSize);
-        std::pair<cl::Event, cl::Event> gradientEvents;
-        cl::Event deltaEvent = p_deltaEvent;
-        for (int l = static_cast<int>(m_layers.size()) - 1; l >= 1; --l)
         {
-            auto &currentLayer = m_layers[l];
-            auto &previousLayer = m_layers[l - 1];
+            return;
+        }
+        if (m_batchSize < p_batchSize)
+        {
+            setBatchSize(p_batchSize);
+        }
+        std::pair<cl::Event, cl::Event> gradientEvents;
+        cl::Event deltaEvent = std::move(p_deltaEvent);
+        for (int layerIndex = static_cast<int>(m_layers.size()) - 1; layerIndex >= 1; --layerIndex)
+        {
+            auto &currentLayer = m_layers[layerIndex];
+            auto &previousLayer = m_layers[layerIndex - 1];
             if (currentLayer->isTrainable())
             {
                 auto &trainableLayer = static_cast<Layers::Trainable::TrainableLayer &>(*currentLayer);
@@ -220,13 +230,15 @@ namespace NeuralNetworks::Local
             gradientEvents = trainableLayer.computeGradients(m_oclResources->getDeltaToGradientQueue(), deltaEvent, p_batchInputs, p_batchSize);
 
             if (m_optimizer)
+            {
                 m_optimizer->updateTrainableLayer(m_oclResources->getConcurrentQueue(), gradientEvents, trainableLayer);
+            }
         }
         cl_int err = m_oclResources->getConcurrentQueue().finish();
 
         if (err != CL_SUCCESS)
         {
-            throw std::runtime_error("Failed to finish concurrent queue during backpropagation. Error code: " + std::to_string(err));
+            CLNN_FATAL("Failed to finish concurrent queue during backpropagation. Error code: " + std::to_string(err));
         }
         m_optimizer->step();
     }
@@ -353,8 +365,8 @@ namespace NeuralNetworks::Local
         oss << m_rng;
         std::string state = oss.str();
 
-        hsize_t dims[1] = {state.size()};
-        H5::DataSpace dataspace(1, dims);
+        std::array<hsize_t, 1> dims{state.size()};
+        H5::DataSpace dataspace(1, dims.data());
         file.createDataSet("rngState", H5::PredType::NATIVE_CHAR, dataspace).write(state.data(), H5::PredType::NATIVE_CHAR);
 
         Utils::writeVectorToHDF5<size_t>(file, "inputDimensions", m_inputDimensions.getDimensions());
@@ -364,18 +376,18 @@ namespace NeuralNetworks::Local
 
         std::map<size_t, std::pair<size_t, size_t>> parameterSizes;
         size_t layerId;
-        for (size_t i = 0; i < m_layers.size(); ++i)
+        for (const auto &layer : m_layers)
         {
-            layerId = m_layers[i]->getLayerId();
-            if (m_layers[i]->isTrainable())
+            layerId = layer->getLayerId();
+            if (layer->isTrainable())
             {
-                auto &trainableLayer = static_cast<Layers::Trainable::TrainableLayer &>(*m_layers[i]);
+                auto &trainableLayer = static_cast<Layers::Trainable::TrainableLayer &>(*layer);
                 parameterSizes[layerId] = {
                     trainableLayer.getWeightsSize(),
                     trainableLayer.getBiasesSize()};
             }
             H5::Group layerSubGroup(layersGroup.createGroup(std::to_string(layerId)));
-            m_layers[i]->save(m_oclResources->getForwardBackpropQueue(), layerSubGroup);
+            layer->save(m_oclResources->getForwardBackpropQueue(), layerSubGroup);
         }
         if (m_lossFunction)
         {
@@ -384,7 +396,7 @@ namespace NeuralNetworks::Local
         }
         else
         {
-            std::cerr << "Warning: Loss Function is null, skipping its save operation." << std::endl;
+            std::cerr << "Warning: Loss Function is null, skipping its save operation." << "\n";
         }
 
         if (m_optimizer)
@@ -394,11 +406,11 @@ namespace NeuralNetworks::Local
         }
         else
         {
-            std::cerr << "Warning: Optimizer is null, skipping its save operation." << std::endl;
+            std::cerr << "Warning: Optimizer is null, skipping its save operation." << "\n";
         }
 
         file.close();
-        std::cout << "Neural Network successfully saved to " << p_fileName << std::endl;
+        std::cout << "Neural Network successfully saved to " << p_fileName << "\n";
     }
 
     bool LocalNeuralNetwork::equals(const LocalNeuralNetwork &p_other) const
@@ -406,7 +418,9 @@ namespace NeuralNetworks::Local
         if (m_batchSize != p_other.m_batchSize ||
             m_inputDimensions != p_other.m_inputDimensions ||
             m_layers.size() != p_other.m_layers.size())
+        {
             return false;
+        }
 
         for (size_t i = 0; i < m_layers.size(); ++i)
         {
@@ -461,10 +475,9 @@ namespace NeuralNetworks::Local
     {
         if (!std::filesystem::exists(p_fileName))
         {
-            std::cerr << "Error: File does not exist: " << p_fileName << std::endl;
-            throw std::runtime_error("File does not exist: " + p_fileName);
+            CLNN_FATAL("File does not exist: " + p_fileName);
         }
-        Utils::OpenCLResources oclResources = Utils::OpenCLResources::createOpenCLResources(p_sharedResources);
+        Utils::OpenCLResources oclResources = Utils::OpenCLResources::createOpenCLResources(std::move(p_sharedResources));
         H5::H5File file(p_fileName, H5F_ACC_RDONLY);
         LocalNeuralNetwork network(std::move(oclResources), file, p_batchSize);
         file.close();

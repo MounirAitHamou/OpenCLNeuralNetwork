@@ -14,15 +14,19 @@ static std::vector<float> cpuDenseForward(
     const std::vector<float> &biases,
     size_t B, size_t in, size_t out)
 {
-    std::vector<float> y(B * out, 0.0f);
+    std::vector<float> y(B * out, 0.0F);
     for (size_t b = 0; b < B; ++b)
+    {
         for (size_t o = 0; o < out; ++o)
         {
             float acc = biases[o];
             for (size_t i = 0; i < in; ++i)
-                acc += inputs[b * in + i] * weights[o * in + i];
-            y[b * out + o] = acc;
+            {
+                acc += inputs[(b * in) + i] * weights[(o * in) + i];
+            }
+            y[(b * out) + o] = acc;
         }
+    }
     return y;
 }
 
@@ -31,11 +35,17 @@ static std::vector<float> cpuBackpropDeltas(
     const std::vector<float> &weights,
     size_t B, size_t in, size_t out)
 {
-    std::vector<float> prev(B * in, 0.0f);
+    std::vector<float> prev(B * in, 0.0F);
     for (size_t b = 0; b < B; ++b)
+    {
         for (size_t i = 0; i < in; ++i)
+        {
             for (size_t o = 0; o < out; ++o)
-                prev[b * in + i] += deltas[b * out + o] * weights[o * in + i];
+            {
+                prev[(b * in) + i] += deltas[(b * out) + o] * weights[(o * in) + i];
+            }
+        }
+    }
     return prev;
 }
 
@@ -44,25 +54,39 @@ static std::vector<float> cpuWeightGradients(
     const std::vector<float> &deltas,
     size_t B, size_t in, size_t out)
 {
-    std::vector<float> grad(out * in, 0.0f);
+    std::vector<float> grad(out * in, 0.0F);
     for (size_t o = 0; o < out; ++o)
+    {
         for (size_t i = 0; i < in; ++i)
+        {
             for (size_t b = 0; b < B; ++b)
-                grad[o * in + i] += deltas[b * out + o] * inputs[b * in + i];
+            {
+                grad[(o * in) + i] += deltas[(b * out) + o] * inputs[(b * in) + i];
+            }
+        }
+    }
     for (auto &g : grad)
+    {
         g /= static_cast<float>(B);
+    }
     return grad;
 }
 
 static std::vector<float> cpuBiasGradients(
     const std::vector<float> &deltas, size_t B, size_t out)
 {
-    std::vector<float> grad(out, 0.0f);
+    std::vector<float> grad(out, 0.0F);
     for (size_t b = 0; b < B; ++b)
+    {
         for (size_t o = 0; o < out; ++o)
-            grad[o] += deltas[b * out + o];
+        {
+            grad[o] += deltas[(b * out) + o];
+        }
+    }
     for (auto &g : grad)
+    {
         g /= static_cast<float>(B);
+    }
     return grad;
 }
 
@@ -81,12 +105,14 @@ protected:
                      1, // Important for testing setBatchSize functionality
                      rng};
 
-    std::vector<float> randomVector(size_t size, float low = -1.0f, float high = 1.0f)
+    std::vector<float> randomVector(size_t size, float low = -1.0F, float high = 1.0F)
     {
         std::uniform_real_distribution<float> dist(low, high);
         std::vector<float> v(size);
         for (auto &x : v)
+        {
             x = dist(rng);
+        }
         return v;
     }
 
@@ -115,11 +141,13 @@ protected:
             p_B, p_IN, p_OUT);
 
         for (size_t i = 0; i < gpu.size(); ++i)
+        {
             EXPECT_NEAR(gpu[i], cpu[i], 1e-4);
+        }
     }
 
     void checkBackprop(DenseLayer &p_layer,
-                       std::vector<float> deltas,
+                       const std::vector<float> &deltas,
                        size_t p_B, size_t p_IN, size_t p_OUT)
     {
         cl::Buffer prevDeltaBuf(ocl.getContext(),
@@ -143,12 +171,14 @@ protected:
             p_B, p_IN, p_OUT);
 
         for (size_t i = 0; i < gpu.size(); ++i)
+        {
             EXPECT_NEAR(gpu[i], cpu[i], 1e-4);
+        }
     }
 
     void checkGradients(DenseLayer &p_layer,
                         std::vector<float> inputs,
-                        std::vector<float> deltas,
+                        const std::vector<float> &deltas,
                         size_t p_B, size_t p_IN, size_t p_OUT)
     {
         cl::Buffer inputBuf(ocl.getContext(),
@@ -160,8 +190,8 @@ protected:
 
         cl::Event placeHolder{};
 
-        std::vector<float> zerosW(p_OUT * p_IN, 0.0f);
-        std::vector<float> zerosB(p_OUT, 0.0f);
+        std::vector<float> zerosW(p_OUT * p_IN, 0.0F);
+        std::vector<float> zerosB(p_OUT, 0.0F);
 
         ocl.getForwardBackpropQueue().enqueueWriteBuffer(
             p_layer.getWeightsGradients(), BLOCKING, NO_OFFSET,
@@ -176,7 +206,9 @@ protected:
         wgEv.wait();
         bgEv.wait();
 
-        std::vector<float> wgpu(p_OUT * p_IN), bgpu(p_OUT);
+        std::vector<float> wgpu(p_OUT * p_IN);
+        std::vector<float> bgpu(p_OUT);
+
         ocl.getForwardBackpropQueue().enqueueReadBuffer(
             p_layer.getWeightsGradients(), BLOCKING, NO_OFFSET,
             wgpu.size() * sizeof(float), wgpu.data());
@@ -188,9 +220,13 @@ protected:
         auto bcpu = cpuBiasGradients(deltas, p_B, p_OUT);
 
         for (size_t i = 0; i < wgpu.size(); ++i)
+        {
             EXPECT_NEAR(wgpu[i], wcpu[i], 1e-4);
+        }
         for (size_t i = 0; i < bgpu.size(); ++i)
+        {
             EXPECT_NEAR(bgpu[i], bcpu[i], 1e-4);
+        }
     }
 };
 
@@ -213,23 +249,23 @@ TEST_F(DenseLayerTest, GradientsRandom)
 
 TEST_F(DenseLayerTest, ForwardZeros)
 {
-    checkForward(layer, std::vector<float>(B * IN, 0.0f), B, IN, OUT);
+    checkForward(layer, std::vector<float>(B * IN, 0.0F), B, IN, OUT);
 }
 
 TEST_F(DenseLayerTest, ForwardOnes)
 {
-    checkForward(layer, std::vector<float>(B * IN, 1.0f), B, IN, OUT);
+    checkForward(layer, std::vector<float>(B * IN, 1.0F), B, IN, OUT);
 }
 
 TEST_F(DenseLayerTest, BackpropZeros)
 {
-    checkBackprop(layer, std::vector<float>(B * OUT, 0.0f), B, IN, OUT);
+    checkBackprop(layer, std::vector<float>(B * OUT, 0.0F), B, IN, OUT);
 }
 
 TEST_F(DenseLayerTest, GradientsZeros)
 {
-    auto inputs = std::vector<float>(B * IN, 0.0f);
-    auto deltas = std::vector<float>(B * OUT, 0.0f);
+    auto inputs = std::vector<float>(B * IN, 0.0F);
+    auto deltas = std::vector<float>(B * OUT, 0.0F);
 
     checkGradients(layer, inputs, deltas, B, IN, OUT);
 }

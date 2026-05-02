@@ -1,36 +1,33 @@
 #include "NeuralNetworks/Local/LocalNeuralNetwork.hpp"
-#include <chrono>
 
 #ifdef _WIN32
 #define _CRTDBG_MAP_ALLOC
-#include <cstdlib>
 #include <crtdbg.h>
-
+#include <cstdlib>
 #ifdef _DEBUG
 #define DBG_NEW new (_NORMAL_BLOCK, __FILE__, __LINE__)
 #define new DBG_NEW
 #endif
 #endif
 
-#include <stdio.h>
-#include <stdint.h>
-#include <stdlib.h>
-
-#include <vector>
+#include <chrono>
+#include <cstdio>
 #include <cstdint>
+#include <cstdlib>
+#include <vector>
 #include <fstream>
 #include <stdexcept>
 
 int XORTest(std::shared_ptr<Utils::SharedResources> p_sharedResources, NeuralNetworks::Local::LocalNeuralNetwork &net)
 {
     size_t batchSize = 1;
-    DataLoaders::CSVNumericalLoader csvLoader(p_sharedResources, batchSize, {"bit1", "bit2"}, {"outputbit"});
+    DataLoaders::CSVNumericalLoader csvLoader(std::move(p_sharedResources), batchSize, {"bit1", "bit2"}, {"outputbit"});
     std::string dataDir = DATA_DIR;
     std::string filePath = dataDir + "/XOR/xor_data.csv";
     csvLoader.loadData(filePath);
     unsigned int seed;
     seed = static_cast<unsigned int>(std::chrono::system_clock::now().time_since_epoch().count());
-    csvLoader.splitData(1.0f, 0.0f, seed);
+    csvLoader.splitData(1.0F, 0.0F, seed);
     csvLoader.activateTrainPartition();
     csvLoader.shuffleCurrentPartition(seed);
 
@@ -43,19 +40,19 @@ int XORTest(std::shared_ptr<Utils::SharedResources> p_sharedResources, NeuralNet
 
         std::cout << "Input: (" << inputsVec[0] << ", " << inputsVec[1] << ")"
                   << " | Predicted: " << prediction[0]
-                  << " | Target: " << targetsVec[0] << std::endl;
+                  << " | Target: " << targetsVec[0] << "\n";
     }
     return 0;
 }
 
-int makeXORModel(Utils::OpenCLResources oclResources, const std::string p_fileName)
+int makeXORModel(Utils::OpenCLResources oclResources, const std::string &p_fileName)
 {
     size_t batchSize = 3;
-    float learningRate = 0.001f;
-    float weightDecayRate = 0.0f;
-    float beta1 = 0.9f;
-    float beta2 = 0.999f;
-    float epsilon = 1e-8f;
+    float learningRate = 0.001F;
+    float weightDecayRate = 0.0F;
+    float beta1 = 0.9F;
+    float beta2 = 0.999F;
+    float epsilon = 1e-8F;
     int epochs = 3000;
     bool lossReporting = true;
 
@@ -65,7 +62,7 @@ int makeXORModel(Utils::OpenCLResources oclResources, const std::string p_fileNa
     csvLoader.loadData(dataFilePath);
     size_t seed;
     seed = static_cast<size_t>(std::chrono::system_clock::now().time_since_epoch().count());
-    csvLoader.splitData(1.0f, 0.0f, seed);
+    csvLoader.splitData(1.0F, 0.0F, seed);
     const Utils::Dimensions initialInputDimensions = Utils::Dimensions({csvLoader.getInputSize()});
     const size_t flatOutputSize = csvLoader.getTargetSize();
 
@@ -128,24 +125,19 @@ int makeXORModel(Utils::OpenCLResources oclResources, const std::string p_fileNa
     {
         loadedNet = NeuralNetworks::Local::LocalNeuralNetwork::load(oclResources.getSharedResources(), p_fileName, batchSize);
         std::cout << "Loaded network from file\n";
-        std::vector<Visualization::LayerVisualization> visualizations = loadedNet.visualize(oclResources.getForwardBackpropQueue(), Visualization::VisualizationOptions({Visualization::BufferType::Weights, Visualization::BufferType::Biases, Visualization::BufferType::Outputs}), batchSize);
-        for (const Visualization::LayerVisualization &layerVis : visualizations)
-        {
-            std::cout << layerVis.toString() << std::endl;
-        }
     }
 
     return 0;
 }
 
-int makeCIFARModel(Utils::OpenCLResources oclResources, const std::string p_fileName)
+int makeCIFARModel(Utils::OpenCLResources oclResources, const std::string &p_fileName)
 {
     size_t batchSize = 10;
-    float learningRate = 1e-3f;
-    float weightDecayRate = 0.0f;
-    float beta1 = 0.9f;
-    float beta2 = 0.999f;
-    float epsilon = 1e-8f;
+    float learningRate = 1e-3F;
+    float weightDecayRate = 0.0F;
+    float beta1 = 0.9F;
+    float beta2 = 0.999F;
+    float epsilon = 1e-8F;
     int epochs = 2;
     bool lossReporting = true;
 
@@ -165,7 +157,7 @@ int makeCIFARModel(Utils::OpenCLResources oclResources, const std::string p_file
     size_t seed =
         static_cast<size_t>(std::chrono::system_clock::now().time_since_epoch().count());
 
-    cifarLoader.splitData(0.8f, 0.1f, seed);
+    cifarLoader.splitData(0.8F, 0.1F, seed);
     cifarLoader.activateTrainPartition();
     cifarLoader.shuffleCurrentPartition(seed);
 
@@ -227,7 +219,7 @@ int makeCIFARModel(Utils::OpenCLResources oclResources, const std::string p_file
     return 0;
 }
 
-int main(void)
+int main()
 {
 #ifdef _WIN32
 #ifdef _DEBUG

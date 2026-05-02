@@ -8,15 +8,15 @@ namespace Layers::Activation
         m_forwardKernel = cl::Kernel(m_sharedResources->getProgram(), "softmaxForward", &err);
         if (err != CL_SUCCESS)
         {
-            throw std::runtime_error("Failed to create Softmax forward kernel");
+            CLNN_FATAL("Failed to create Softmax forward kernel");
         }
-        Utils::setKernelArgs(1, m_forwardKernel, getOutputs(), (cl_uint)getTotalOutputElements());
+        Utils::setKernelArgs(1, m_forwardKernel, getOutputs(), static_cast<cl_uint>(getTotalOutputElements()));
 
         m_backwardKernel = cl::Kernel(m_sharedResources->getProgram(), "softmaxBackward", &err);
         if (err != CL_SUCCESS)
         {
-            throw std::runtime_error("Failed to create Softmax backward kernel");
+            CLNN_FATAL("Failed to create Softmax backward kernel");
         }
-        Utils::setKernelArgs(1, m_backwardKernel, getDeltas(), getOutputs(), (cl_uint)getTotalOutputElements());
+        Utils::setKernelArgs(1, m_backwardKernel, getDeltas(), getOutputs(), static_cast<cl_uint>(getTotalOutputElements()));
     }
 }

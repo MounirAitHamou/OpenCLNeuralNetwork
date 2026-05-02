@@ -9,6 +9,9 @@
 #include <algorithm>
 #include <vector>
 #include <cmath>
+#include <ranges>
+
+#include "Utils/Error.hpp"
 
 #ifndef NEURAL_NETWORK_CONSTANTS_HPP
 #define NEURAL_NETWORK_CONSTANTS_HPP
@@ -121,7 +124,7 @@ namespace Utils
     {
         if (!p_group.attrExists(p_attrName))
         {
-            throw std::runtime_error("Attribute " + p_attrName + " does not exist");
+            CLNN_FATAL("Attribute " + p_attrName + " does not exist");
         }
 
         H5::Attribute attr = p_group.openAttribute(p_attrName);
@@ -132,7 +135,7 @@ namespace Utils
         int rank = space.getSimpleExtentNdims();
         if (rank != 1)
         {
-            throw std::runtime_error("Attribute " + p_attrName + " is not 1D");
+            CLNN_FATAL("Attribute " + p_attrName + " is not 1D");
         }
         space.getSimpleExtentDims(&numElements, nullptr);
 
@@ -203,7 +206,7 @@ namespace Utils
     {
         if (!group.attrExists(attrName))
         {
-            throw std::runtime_error("Attribute " + attrName + " does not exist");
+            CLNN_FATAL("Attribute " + attrName + " does not exist");
         }
 
         H5::Attribute attr = group.openAttribute(attrName);

@@ -13,7 +13,7 @@ namespace Layers::Trainable
                    const size_t p_batchSize,
                    std::mt19937 &p_rng);
 
-        DenseLayer(std::shared_ptr<Utils::SharedResources> p_sharedResources,
+        DenseLayer(const std::shared_ptr<Utils::SharedResources> &p_sharedResources,
                    const H5::Group &p_layerGroup,
                    const size_t p_batchSize);
 

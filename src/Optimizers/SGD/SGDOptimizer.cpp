@@ -9,7 +9,7 @@ namespace Optimizers
 
     cl::Event SGDOptimizer::updateParameters(const cl::CommandQueue &p_concurrentQueue,
                                              const cl::Event p_lastEvent,
-                                             const std::string &,
+                                             const std::string & /*p_parametersId*/,
                                              cl::Buffer &p_parameters,
                                              cl::Buffer &p_gradients,
                                              size_t p_numElements)

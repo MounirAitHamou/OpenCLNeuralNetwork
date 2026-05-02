@@ -62,8 +62,8 @@ namespace Utils
             if (p_inputDimensions.getDimensions()[0] != m_filterDimensions.getInputChannels())
             {
                 std::cerr << "Error: Input channels of filter dimensions (" << m_filterDimensions.getInputChannels()
-                          << ") do not match the channels of input dimensions (" << p_inputDimensions.getDimensions()[0] << ")." << std::endl;
-                throw std::invalid_argument("Input dimensions' channels do not match filter's input channels.");
+                          << ") do not match the channels of input dimensions (" << p_inputDimensions.getDimensions()[0] << ")." << "\n";
+                CLNN_FATAL("Input dimensions' channels do not match filter's input channels.");
             }
             return std::make_unique<Layers::Trainable::ConvolutionalLayer>(p_layerId, p_sharedResources, p_inputDimensions, m_filterDimensions, m_strideDimensions, m_paddingType, p_batchSize, p_rng);
         }
@@ -177,5 +177,5 @@ namespace Utils
     std::unique_ptr<LayerArgs> makeTanhLayerArgs();
     std::unique_ptr<LayerArgs> makeSoftmaxLayerArgs();
 
-    std::unique_ptr<Layers::Layer> loadLayer(std::shared_ptr<Utils::SharedResources> p_sharedResources, const H5::Group &p_layerGroup, const size_t p_batchSize);
+    std::unique_ptr<Layers::Layer> loadLayer(const std::shared_ptr<Utils::SharedResources> &p_sharedResources, const H5::Group &p_layerGroup, const size_t p_batchSize);
 }

@@ -17,7 +17,7 @@ namespace DataLoaders
         DataOrder p_inputOrder,
         DataOrder p_outputOrder,
         size_t p_numClasses)
-        : DataLoader(p_sharedResources, p_batchSize),
+        : DataLoader(std::move(p_sharedResources), p_batchSize),
           m_width(p_width),
           m_height(p_height),
           m_channels(p_channels),
@@ -37,22 +37,22 @@ namespace DataLoaders
         switch (p_o)
         {
         case DataOrder::CHW:
-            return p_c * H * W + p_y * W + p_x;
+            return (p_c * H * W) + (p_y * W) + p_x;
         case DataOrder::HWC:
-            return (p_y * W + p_x) * C + p_c;
+            return (((p_y * W) + p_x) * C) + p_c;
         case DataOrder::CWH:
-            return p_c * W * H + p_x * H + p_y;
+            return (p_c * W * H) + (p_x * H) + p_y;
         case DataOrder::WHC:
-            return (p_x * H + p_y) * C + p_c;
+            return (((p_x * H) + p_y) * C) + p_c;
         case DataOrder::HCW:
-            return p_y * C * W + p_c * W + p_x;
+            return (p_y * C * W) + (p_c * W) + p_x;
         case DataOrder::WCH:
-            return p_x * C * H + p_c * H + p_y;
+            return (p_x * C * H) + (p_c * H) + p_y;
         }
         return 0;
     }
 
-    Utils::Dimensions BinImageDataLoader::getInputDimensions(const size_t p_channels, const size_t p_height, const size_t p_width, DataOrder p_o) const
+    Utils::Dimensions BinImageDataLoader::getInputDimensions(const size_t p_channels, const size_t p_height, const size_t p_width, DataOrder p_o)
     {
         switch (p_o)
         {
@@ -69,15 +69,16 @@ namespace DataLoaders
         case DataOrder::WCH:
             return Utils::Dimensions({p_width, p_channels, p_height});
         }
-        return Utils::Dimensions();
+        return {};
     }
 
     void BinImageDataLoader::loadData(const std::string &p_source)
     {
         std::ifstream f(p_source, std::ios::binary);
         if (!f)
-            throw std::runtime_error("Failed to open binary image file");
-
+        {
+            CLNN_FATAL("Failed to open binary image file");
+        }
         const size_t imageBytes = m_width * m_height * m_channels;
         const size_t recordBytes = imageBytes + (m_hasLabel ? 1 : 0);
 
@@ -103,20 +104,26 @@ namespace DataLoaders
                 label = static_cast<int>(lbl);
                 std::vector<float> &sample = m_allData[n];
                 for (size_t c = 0; c < m_numClasses; ++c)
-                    sample[imageBytes + c] = (c == label ? 1.0f : 0.0f);
+                {
+                    sample[imageBytes + c] = (c == label ? 1.0F : 0.0F);
+                }
             }
 
             f.read(reinterpret_cast<char *>(tmp.data()), imageBytes);
 
             std::vector<float> &sample = m_allData[n];
             for (size_t y = 0; y < m_height; ++y)
+            {
                 for (size_t x = 0; x < m_width; ++x)
+                {
                     for (size_t c = 0; c < m_channels; ++c)
                     {
                         size_t in = index(x, y, c, m_inputOrder);
                         size_t out = index(x, y, c, m_outputOrder);
-                        sample[out] = static_cast<float>(tmp[in]) / 255.0f;
+                        sample[out] = static_cast<float>(tmp[in]) / 255.0F;
                     }
+                }
+            }
         }
 
         m_trainIndices.resize(N);
@@ -134,8 +141,9 @@ namespace DataLoaders
         std::vector<float> inputs((end - p_batchStart) * imageSize);
         std::vector<float> targets;
         if (m_hasLabel)
+        {
             targets.resize((end - p_batchStart) * m_numClasses);
-
+        }
         for (size_t i = p_batchStart; i < end; ++i)
         {
             size_t id = idx[i];
@@ -181,8 +189,8 @@ namespace DataLoaders
         std::mt19937 rng(static_cast<unsigned long>(p_seed));
         std::shuffle(all.begin(), all.end(), rng);
 
-        size_t nTrain = static_cast<size_t>(all.size() * p_train);
-        size_t nVal = static_cast<size_t>(all.size() * p_val);
+        auto nTrain = static_cast<size_t>(all.size() * p_train);
+        auto nVal = static_cast<size_t>(all.size() * p_val);
 
         m_trainIndices.assign(all.begin(), all.begin() + nTrain);
         m_validationIndices.assign(all.begin() + nTrain, all.begin() + nTrain + nVal);
@@ -191,8 +199,10 @@ namespace DataLoaders
 
     void BinImageDataLoader::shuffleCurrentPartition(std::mt19937 &p_rng)
     {
-        if (!m_currentActiveIndices)
-            throw std::runtime_error("No active partition");
+        if (m_currentActiveIndices == nullptr)
+        {
+            CLNN_FATAL("No active partition");
+        }
         std::shuffle(
             m_currentActiveIndices->begin(),
             m_currentActiveIndices->end(),

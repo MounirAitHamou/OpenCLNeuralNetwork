@@ -41,7 +41,7 @@ namespace Layers::Activation
 
             if (err != CL_SUCCESS)
             {
-                throw std::runtime_error("Failed to enqueue forward kernel");
+                CLNN_FATAL("Failed to enqueue forward kernel");
             }
 
             return forwardEvent;
@@ -64,7 +64,7 @@ namespace Layers::Activation
 
             if (err != CL_SUCCESS)
             {
-                throw std::runtime_error("Failed to enqueue backward kernel");
+                CLNN_FATAL("Failed to enqueue backward kernel");
             }
 
             return backpropEvent;

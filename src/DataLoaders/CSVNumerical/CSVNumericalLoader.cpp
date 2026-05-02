@@ -5,16 +5,16 @@ namespace DataLoaders
                                            const size_t p_batchSize,
                                            std::vector<std::string> p_inputColumns,
                                            std::vector<std::string> p_targetColumns)
-        : DataLoader(p_sharedResources, p_batchSize),
+        : DataLoader(std::move(p_sharedResources), p_batchSize),
           m_inputColumns(std::move(p_inputColumns)),
           m_targetColumns(std::move(p_targetColumns)) {}
 
     Utils::Batch CSVNumericalLoader::getBatch(size_t p_batchStart, size_t p_batchSize) const
     {
-        if (!m_currentActiveIndices || m_currentActiveIndices == nullptr)
+        if (m_currentActiveIndices == nullptr)
         {
-            std::cerr << "Error: No active data partition is set. Call activateTrainPartition, activateValidationPartition, or activateTestPartition before getting batches." << std::endl;
-            throw std::runtime_error("No data partition is active. Call activateTrainPartition, activateValidationPartition, or activateTestPartition before getting batches.");
+            std::cerr << "Error: No active data partition is set. Call activateTrainPartition, activateValidationPartition, or activateTestPartition before getting batches." << "\n";
+            CLNN_FATAL("No data partition is active. Call activateTrainPartition, activateValidationPartition, or activateTestPartition before getting batches.");
         }
 
         std::vector<float> inputs;
@@ -33,20 +33,20 @@ namespace DataLoaders
             size_t sampleIdx = (*m_currentActiveIndices)[i];
             const std::vector<float> &row = m_allData[sampleIdx];
 
-            for (auto &inputIndex : m_inputColumnsIndices)
+            for (const auto &inputIndex : m_inputColumnsIndices)
             {
                 if (inputIndex >= row.size())
                 {
-                    throw std::runtime_error("Input column index out of bounds for sample " + std::to_string(sampleIdx));
+                    CLNN_FATAL("Input column index out of bounds for sample " + std::to_string(sampleIdx));
                 }
                 inputs.push_back(row[inputIndex]);
             }
 
-            for (auto &targetIndex : m_targetColumnsIndices)
+            for (const auto &targetIndex : m_targetColumnsIndices)
             {
                 if (targetIndex >= row.size())
                 {
-                    throw std::runtime_error("Target column index out of bounds for sample " + std::to_string(sampleIdx));
+                    CLNN_FATAL("Target column index out of bounds for sample " + std::to_string(sampleIdx));
                 }
                 targets.push_back(row[targetIndex]);
             }
@@ -62,13 +62,13 @@ namespace DataLoaders
     {
         if (m_inputColumns.empty() || m_targetColumns.empty())
         {
-            throw std::invalid_argument("Input and target columns must be specified.");
+            CLNN_FATAL("Input and target columns must be specified.");
         }
 
         std::ifstream file(p_source);
         if (!file)
         {
-            throw std::runtime_error("Failed to open CSV file: " + p_source);
+            CLNN_FATAL("Failed to open CSV file: " + p_source);
         }
 
         m_allData.clear();
@@ -91,7 +91,7 @@ namespace DataLoaders
                 std::cerr << "Warning: Row size mismatch. Expected "
                           << (m_numInputFeatures + m_numTargetFeatures)
                           << ", got " << row.size()
-                          << ". Skipping row." << std::endl;
+                          << ". Skipping row." << "\n";
                 continue;
             }
 
@@ -100,22 +100,22 @@ namespace DataLoaders
 
         if (m_allData.empty())
         {
-            throw std::runtime_error("No data loaded from CSV file: " + p_source +
-                                     ". File might be empty or malformed.");
+            CLNN_FATAL("No data loaded from CSV file: " + p_source +
+                       ". File might be empty or malformed.");
         }
 
         if (m_allData[0].size() < 2)
         {
-            throw std::runtime_error("CSV data must have at least one input and one target column.");
+            CLNN_FATAL("CSV data must have at least one input and one target column.");
         }
         file.close();
     }
 
     void CSVNumericalLoader::splitData(float p_trainRatio, float p_valRatio, size_t p_seed)
     {
-        if (p_trainRatio < 0.0f || p_valRatio < 0.0f || p_trainRatio + p_valRatio > 1.0f)
+        if (p_trainRatio < 0.0F || p_valRatio < 0.0F || p_trainRatio + p_valRatio > 1.0F)
         {
-            throw std::invalid_argument("Invalid train or validation ratios. They must be non-negative and sum to less than or equal to 1.0.");
+            CLNN_FATAL("Invalid train or validation ratios. They must be non-negative and sum to less than or equal to 1.0.");
         }
 
         std::vector<size_t> allIndices(getTotalSamples());
@@ -125,8 +125,8 @@ namespace DataLoaders
         std::shuffle(allIndices.begin(), allIndices.end(), g);
 
         size_t totalSamples = getTotalSamples();
-        size_t numTrain = static_cast<size_t>(totalSamples * p_trainRatio);
-        size_t numVal = static_cast<size_t>(totalSamples * p_valRatio);
+        auto numTrain = static_cast<size_t>(totalSamples * p_trainRatio);
+        auto numVal = static_cast<size_t>(totalSamples * p_valRatio);
 
         m_trainIndices.assign(allIndices.begin(), allIndices.begin() + numTrain);
         m_validationIndices.assign(allIndices.begin() + numTrain, allIndices.begin() + numTrain + numVal);
@@ -137,9 +137,9 @@ namespace DataLoaders
 
     void CSVNumericalLoader::shuffleCurrentPartition(std::mt19937 &p_rng)
     {
-        if (!m_currentActiveIndices)
+        if (m_currentActiveIndices == nullptr)
         {
-            throw std::runtime_error("No data partition is active to shuffle. Call activateTrainPartition, activateValidationPartition, or activateTestPartition first.");
+            CLNN_FATAL("No data partition is active to shuffle. Call activateTrainPartition, activateValidationPartition, or activateTestPartition first.");
         }
         std::shuffle(m_currentActiveIndices->begin(), m_currentActiveIndices->end(), p_rng);
     }
@@ -189,7 +189,7 @@ namespace DataLoaders
         m_currentActiveIndices = &m_testIndices;
     }
 
-    std::vector<float> CSVNumericalLoader::parseCSVLine(const std::string &p_line) const
+    std::vector<float> CSVNumericalLoader::parseCSVLine(const std::string &p_line)
     {
         std::vector<float> row;
         std::stringstream ss(p_line);
@@ -197,7 +197,7 @@ namespace DataLoaders
 
         while (std::getline(ss, cell, ','))
         {
-            float value = 0.0f;
+            float value = 0.0F;
 
             auto result = std::from_chars(
                 cell.data(),
@@ -213,7 +213,7 @@ namespace DataLoaders
                 std::cerr << "Warning: Could not convert '"
                           << cell
                           << "' to float. Defaulting to 0.0.\n";
-                row.push_back(0.0f);
+                row.push_back(0.0F);
             }
         }
         return row;
@@ -232,11 +232,11 @@ namespace DataLoaders
         while (std::getline(ss, column, ','))
         {
             m_header.push_back(column);
-            if (std::find(m_inputColumns.begin(), m_inputColumns.end(), column) != m_inputColumns.end())
+            if (std::ranges::find(m_inputColumns, column) != m_inputColumns.end())
             {
                 m_inputColumnsIndices.push_back(index);
             }
-            if (std::find(m_targetColumns.begin(), m_targetColumns.end(), column) != m_targetColumns.end())
+            if (std::ranges::find(m_targetColumns, column) != m_targetColumns.end())
             {
                 m_targetColumnsIndices.push_back(index);
             }

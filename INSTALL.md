@@ -15,6 +15,11 @@ This guide explains how to build and run **OpenCLNeuralNetwork** on **Windows** 
   - **Desktop development with C++**
   - **x64** toolchain
 
+#### ✅ LLVM/Clang (For clang-tidy)
+- Download and install LLVM/Clang:  
+  https://releases.llvm.org/download.html
+- During installation, ensure you add LLVM to your system PATH.
+
 #### ✅ CMake
 - Download and install CMake:  
   https://cmake.org/download/
@@ -37,7 +42,8 @@ Install build tools, CMake, and OpenCL dependencies:
 ```bash
 sudo apt update
 sudo apt install -y build-essential cmake ninja-build git \
-                    ocl-icd-opencl-dev clinfo pocl-opencl-icd
+                    ocl-icd-opencl-dev clinfo pocl-opencl-icd \
+                    clang-tidy
 ```
 
 ---

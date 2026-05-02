@@ -9,7 +9,7 @@ namespace LossFunctions
                                                     const size_t p_outputElements,
                                                     const size_t p_batchSize)
     {
-        Utils::setKernelArgs(m_gradientKernel, p_predictions, p_targets, p_outputGradients, (cl_uint)p_outputElements);
+        Utils::setKernelArgs(m_gradientKernel, p_predictions, p_targets, p_outputGradients, static_cast<cl_uint>(p_outputElements));
         cl::NDRange global(p_batchSize, p_outputElements);
         cl::Event kernelEvent;
         p_queue.enqueueNDRangeKernel(m_gradientKernel,
@@ -27,7 +27,7 @@ namespace LossFunctions
         m_gradientKernel = cl::Kernel(m_sharedResources->getProgram(), "meanSquaredErrorComputeGradients", &err);
         if (err != CL_SUCCESS)
         {
-            throw std::runtime_error("Failed to create MeanSquaredError gradient kernel");
+            CLNN_FATAL("Failed to create MeanSquaredError gradient kernel");
         }
     }
 
@@ -36,7 +36,7 @@ namespace LossFunctions
                                         size_t p_outputElements,
                                         size_t p_batchSize)
     {
-        float totalLoss = 0.0f;
+        float totalLoss = 0.0F;
         size_t totalElements = p_outputElements * p_batchSize;
         for (size_t i = 0; i < totalElements; ++i)
         {

@@ -8,14 +8,14 @@ namespace Layers::Activation
         m_forwardKernel = cl::Kernel(m_sharedResources->getProgram(), "sigmoidForward", &err);
         if (err != CL_SUCCESS)
         {
-            throw std::runtime_error("Failed to create Sigmoid forward kernel");
+            CLNN_FATAL("Failed to create Sigmoid forward kernel");
         }
         Utils::setKernelArgs(1, m_forwardKernel, getOutputs());
 
         m_backwardKernel = cl::Kernel(m_sharedResources->getProgram(), "sigmoidBackward", &err);
         if (err != CL_SUCCESS)
         {
-            throw std::runtime_error("Failed to create Sigmoid backward kernel");
+            CLNN_FATAL("Failed to create Sigmoid backward kernel");
         }
         Utils::setKernelArgs(1, m_backwardKernel, getDeltas(), getOutputs());
     }

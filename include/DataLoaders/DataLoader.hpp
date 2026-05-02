@@ -57,7 +57,7 @@ namespace DataLoaders
             {
                 return *m_currentActiveIndices;
             }
-            throw std::runtime_error("No active partition is set.");
+            CLNN_FATAL("No active partition is set.");
         }
 
         size_t getBatchSize() const { return m_batchSize; }
@@ -104,7 +104,7 @@ namespace DataLoaders
         {
             if (!m_loader || m_pos >= m_loader->getTotalSamples())
             {
-                throw std::out_of_range("Batch position out of range");
+                CLNN_FATAL("Batch position out of range");
             }
             return m_loader->getBatch(m_pos, m_loader->getBatchSize());
         }

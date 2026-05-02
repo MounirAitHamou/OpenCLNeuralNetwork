@@ -35,7 +35,7 @@ namespace Utils
         case 6:
             return LayerType::Softmax;
         default:
-            throw std::invalid_argument("Invalid value for LayerType");
+            CLNN_FATAL("Invalid value for LayerType");
         }
     }
 
@@ -58,7 +58,7 @@ namespace Utils
         case LayerType::Softmax:
             return "Softmax";
         default:
-            throw std::invalid_argument("Invalid LayerType value");
+            CLNN_FATAL("Invalid LayerType value");
         }
     }
 }

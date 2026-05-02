@@ -7,14 +7,14 @@ namespace Layers::Trainable
                            const Utils::Dimensions &p_outputDimensions,
                            const size_t p_batchSize,
                            std::mt19937 &p_rng)
-        : TrainableLayer(p_layerId, p_sharedResources, p_inputDimensions, Utils::Dimensions::validateDenseDimensions(p_outputDimensions), p_batchSize)
+        : TrainableLayer(p_layerId, std::move(p_sharedResources), p_inputDimensions, Utils::Dimensions::validateDenseDimensions(p_outputDimensions), p_batchSize)
     {
         initializeWeightsAndBiases(p_rng);
         allocateDenseLayerBuffers(p_batchSize);
         setupKernels();
     }
 
-    DenseLayer::DenseLayer(std::shared_ptr<Utils::SharedResources> p_sharedResources,
+    DenseLayer::DenseLayer(const std::shared_ptr<Utils::SharedResources> &p_sharedResources,
                            const H5::Group &p_layerGroup,
                            const size_t p_batchSize)
         : TrainableLayer(p_sharedResources, p_layerGroup, p_batchSize)
@@ -30,7 +30,9 @@ namespace Layers::Trainable
                                      const size_t p_batchSize)
     {
         if (m_batchSize < p_batchSize)
+        {
             setBatchSize(p_batchSize);
+        }
 
         size_t flatInputSize = m_inputDimensions.getTotalElements();
         size_t flatOutputSize = m_outputDimensions.getTotalElements();
@@ -50,8 +52,8 @@ namespace Layers::Trainable
             m_clblastWorkspace());
         if (status != clblast::StatusCode::kSuccess)
         {
-            std::cerr << "Forward CLBlast GEMM failed: " << static_cast<int>(status) << " for layer " << m_layerId << std::endl;
-            throw std::runtime_error("CLBlast GEMM failed");
+            std::cerr << "Forward CLBlast GEMM failed: " << static_cast<int>(status) << " for layer " << m_layerId << "\n";
+            CLNN_FATAL("CLBlast GEMM failed");
         }
 
         cl::Event returnEvent;
@@ -62,7 +64,7 @@ namespace Layers::Trainable
 
         if (err != CL_SUCCESS)
         {
-            throw std::runtime_error("Failed to enqueue bias addition kernel.");
+            CLNN_FATAL("Failed to enqueue bias addition kernel.");
         }
 
         return returnEvent;
@@ -74,7 +76,9 @@ namespace Layers::Trainable
         const size_t p_batchSize)
     {
         if (m_batchSize < p_batchSize)
+        {
             setBatchSize(p_batchSize);
+        }
 
         size_t previousLayerFlatOutputSize = m_inputDimensions.getTotalElements();
         size_t flatOutputSize = m_outputDimensions.getTotalElements();
@@ -96,8 +100,8 @@ namespace Layers::Trainable
 
         if (status != clblast::StatusCode::kSuccess)
         {
-            std::cerr << "Backprop CLBlast GEMM failed: " << static_cast<int>(status) << " for layer " << m_layerId << std::endl;
-            throw std::runtime_error("CLBlast GEMM failed");
+            std::cerr << "Backprop CLBlast GEMM failed: " << static_cast<int>(status) << " for layer " << m_layerId << "\n";
+            CLNN_FATAL("CLBlast GEMM failed");
         }
 
         return cl::Event(raw_event, true);
@@ -109,7 +113,9 @@ namespace Layers::Trainable
                                                                  const size_t p_batchSize)
     {
         if (m_batchSize < p_batchSize)
+        {
             setBatchSize(p_batchSize);
+        }
         if (p_backpropEvent() != nullptr)
         {
             std::vector<cl::Event> deltaBackPropWaitList = {p_backpropEvent};
@@ -121,7 +127,7 @@ namespace Layers::Trainable
 
         cl_event raw_gemm_event = nullptr;
         cl_command_queue raw_queue = p_deltaToGradientQueue.get();
-        float alpha = 1.0f / static_cast<float>(p_batchSize);
+        float alpha = 1.0F / static_cast<float>(p_batchSize);
         auto status = clblast::Gemm<float>(
             clblast::Layout::kRowMajor,
             clblast::Transpose::kYes,
@@ -138,8 +144,8 @@ namespace Layers::Trainable
 
         if (status != clblast::StatusCode::kSuccess)
         {
-            std::cerr << "Weight Gradients CLBlast GEMM failed: " << static_cast<int>(status) << " for layer " << m_layerId << std::endl;
-            throw std::runtime_error("CLBlast GEMM failed");
+            std::cerr << "Weight Gradients CLBlast GEMM failed: " << static_cast<int>(status) << " for layer " << m_layerId << "\n";
+            CLNN_FATAL("CLBlast GEMM failed");
         }
 
         cl::Event gemmEvent(raw_gemm_event, true);
@@ -160,8 +166,8 @@ namespace Layers::Trainable
 
         if (status != clblast::StatusCode::kSuccess)
         {
-            std::cerr << "Bias Gradients CLBlast GEMM failed: " << static_cast<int>(status) << " for layer " << m_layerId << std::endl;
-            throw std::runtime_error("CLBlast GEMV failed");
+            std::cerr << "Bias Gradients CLBlast GEMM failed: " << static_cast<int>(status) << " for layer " << m_layerId << "\n";
+            CLNN_FATAL("CLBlast GEMV failed");
         }
 
         cl::Event gemvEvent(raw_gemv_event, true);
@@ -172,7 +178,7 @@ namespace Layers::Trainable
     {
         m_weightsGradients = cl::Buffer(m_sharedResources->getContext(), CL_MEM_READ_WRITE, getWeightsSize() * sizeof(float));
         m_biasesGradients = cl::Buffer(m_sharedResources->getContext(), CL_MEM_READ_WRITE, getBiasesSize() * sizeof(float));
-        m_onesBuffer = cl::Buffer(m_sharedResources->getContext(), CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, p_batchSize * sizeof(float), std::vector<float>(p_batchSize, 1.0f).data());
+        m_onesBuffer = cl::Buffer(m_sharedResources->getContext(), CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, p_batchSize * sizeof(float), std::vector<float>(p_batchSize, 1.0F).data());
 
         size_t flatInputSize = m_inputDimensions.getTotalElements();
         size_t flatOutputSize = m_outputDimensions.getTotalElements();
@@ -193,9 +199,9 @@ namespace Layers::Trainable
         std::vector<float> h_weights(getWeightsSize());
         std::vector<float> h_biases(getBiasesSize());
 
-        float fanIn = (float)getTotalInputElements();
-        float fanOut = (float)getTotalOutputElements();
-        float limit = std::sqrt(6.0f / (fanIn + fanOut));
+        auto fanIn = static_cast<float>(getTotalInputElements());
+        auto fanOut = static_cast<float>(getTotalOutputElements());
+        float limit = std::sqrt(6.0F / (fanIn + fanOut));
 
         for (auto &weight : h_weights)
         {
@@ -204,7 +210,7 @@ namespace Layers::Trainable
 
         for (auto &bias : h_biases)
         {
-            bias = 0.0f;
+            bias = 0.0F;
         }
 
         m_weights = cl::Buffer(m_sharedResources->getContext(), CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, h_weights.size() * sizeof(float), h_weights.data());
@@ -219,12 +225,12 @@ namespace Layers::Trainable
         m_biasKernel = cl::Kernel(m_sharedResources->getProgram(), "denseBias", &err);
         if (err != CL_SUCCESS)
         {
-            throw std::runtime_error("Failed to create denseBias kernel");
+            CLNN_FATAL("Failed to create denseBias kernel");
         }
 
         Utils::setKernelArgs(m_biasKernel,
                              getBiases(),
                              getOutputs(),
-                             (cl_int)getTotalOutputElements());
+                             static_cast<cl_int>(getTotalOutputElements()));
     }
 }

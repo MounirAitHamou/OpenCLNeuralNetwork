@@ -4,7 +4,7 @@
 
 namespace LossFunctions
 {
-    class MeanSquaredError : public LossFunction
+    class MeanSquaredError final : public LossFunction
     {
     public:
         MeanSquaredError(std::shared_ptr<Utils::SharedResources> p_sharedResources)

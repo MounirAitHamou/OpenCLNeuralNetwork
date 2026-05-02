@@ -19,7 +19,7 @@ namespace Utils
         return std::make_unique<AdamWOptimizerArgs>(p_learningRate, p_weightDecayRate, p_beta1, p_beta2, p_epsilon);
     }
 
-    std::unique_ptr<Optimizers::Optimizer> loadOptimizer(std::shared_ptr<Utils::SharedResources> p_oclResources,
+    std::unique_ptr<Optimizers::Optimizer> loadOptimizer(const std::shared_ptr<Utils::SharedResources> &p_sharedResources,
                                                          const H5::Group &p_optimizerGroup)
     {
         unsigned int optimizerType;
@@ -28,13 +28,13 @@ namespace Utils
         switch (optimizerTypeFromUint(optimizerType))
         {
         case OptimizerType::SGD:
-            return std::make_unique<Optimizers::SGDOptimizer>(p_oclResources, p_optimizerGroup);
+            return std::make_unique<Optimizers::SGDOptimizer>(p_sharedResources, p_optimizerGroup);
         case OptimizerType::Adam:
-            return std::make_unique<Optimizers::AdamOptimizer>(p_oclResources, p_optimizerGroup);
+            return std::make_unique<Optimizers::AdamOptimizer>(p_sharedResources, p_optimizerGroup);
         case OptimizerType::AdamW:
-            return std::make_unique<Optimizers::AdamWOptimizer>(p_oclResources, p_optimizerGroup);
+            return std::make_unique<Optimizers::AdamWOptimizer>(p_sharedResources, p_optimizerGroup);
         default:
-            throw std::runtime_error("Unsupported optimizer type in HDF5 file.");
+            CLNN_FATAL("Unsupported optimizer type in HDF5 file.");
         }
     }
 }

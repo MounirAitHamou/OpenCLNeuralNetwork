@@ -5,6 +5,8 @@
 #include <vector>
 #include <algorithm>
 #include <iostream>
+#include <ranges>
+
 namespace Utils
 {
     struct EventProfile
@@ -19,7 +21,7 @@ namespace Utils
     class EventProfiler
     {
     public:
-        static EventProfile profileEvent(const cl::Event p_event, const std::string &p_name);
+        static EventProfile profileEvent(const cl::Event &p_event, const std::string &p_name);
 
         static void printTimeline(const std::vector<EventProfile> &p_events);
     };

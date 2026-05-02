@@ -31,6 +31,13 @@ jobs:
         if: matrix.os == 'windows-latest'
         uses: ilammy/msvc-dev-cmd@v1
 
+      - name: Install clang-tidy (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: powershell
+        run: |
+          choco install llvm -y
+          clang-tidy --version
+
       - name: Setup and Build on Windows
         if: matrix.os == 'windows-latest'
         shell: cmd
@@ -44,7 +51,8 @@ jobs:
         run: |
           sudo apt update
           sudo apt install -y build-essential cmake ninja-build git \
-                                ocl-icd-opencl-dev clinfo pocl-opencl-icd
+                                ocl-icd-opencl-dev clinfo pocl-opencl-icd \
+                                clang-tidy
           clinfo
           bash setup.sh
 

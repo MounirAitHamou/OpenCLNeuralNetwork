@@ -3,11 +3,11 @@ namespace DataLoaders
 {
     DataLoaderIterator DataLoader::begin()
     {
-        return DataLoaderIterator(this, 0);
+        return {this, 0};
     }
 
     DataLoaderIterator DataLoader::end()
     {
-        return DataLoaderIterator(this, getActivePartition().size());
+        return {this, getActivePartition().size()};
     }
 }

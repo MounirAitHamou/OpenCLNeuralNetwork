@@ -7,7 +7,7 @@ namespace Utils
     {
         if (p_outputDimensions.getDimensions().size() != 1)
         {
-            throw std::invalid_argument("Dense layer dimensions must be a single value for output size.");
+            CLNN_FATAL("Dense layer dimensions must be a single value for output size.");
         }
         return std::make_unique<DenseLayerArgs>(p_outputDimensions);
     }
@@ -49,7 +49,7 @@ namespace Utils
         return std::make_unique<SoftmaxLayerArgs>();
     }
 
-    std::unique_ptr<Layers::Layer> loadLayer(std::shared_ptr<Utils::SharedResources> p_sharedResources,
+    std::unique_ptr<Layers::Layer> loadLayer(const std::shared_ptr<Utils::SharedResources> &p_sharedResources,
                                              const H5::Group &p_layerGroup,
                                              const size_t p_batchSize)
     {
@@ -73,7 +73,7 @@ namespace Utils
         case LayerType::Softmax:
             return std::make_unique<Layers::Activation::SoftmaxLayer>(p_sharedResources, p_layerGroup, p_batchSize);
         default:
-            throw std::runtime_error("Unsupported layer type: " + std::to_string(layerType));
+            CLNN_FATAL("Unsupported layer type: " + std::to_string(layerType));
         }
     }
 }

@@ -19,7 +19,7 @@ namespace Layers::Trainable
                            const size_t p_batchSize,
                            std::mt19937 &p_rng);
 
-        ConvolutionalLayer(std::shared_ptr<Utils::SharedResources> p_sharedResources,
+        ConvolutionalLayer(const std::shared_ptr<Utils::SharedResources> &p_sharedResources,
                            const H5::Group &p_layerGroup,
                            const size_t p_batchSize);
 
@@ -87,12 +87,12 @@ namespace Layers::Trainable
         Utils::PaddingType m_paddingType;
 
         void allocateConvolutionalLayerBuffers();
-        Utils::Dimensions calculateOutputDimensions(const Utils::Dimensions &p_inputDimensions, const Utils::FilterDimensions &p_filterDimensions, const Utils::StrideDimensions &p_strideDimensions, Utils::PaddingType p_paddingType) const;
+        static Utils::Dimensions calculateOutputDimensions(const Utils::Dimensions &p_inputDimensions, const Utils::FilterDimensions &p_filterDimensions, const Utils::StrideDimensions &p_strideDimensions, Utils::PaddingType p_paddingType);
         Utils::Dimensions calculateOutputDimensions() const;
-        Utils::PaddingValues calculatePaddingValues(const Utils::Dimensions &p_inputDimensions, const Utils::FilterDimensions &p_filterDimensions, const Utils::StrideDimensions &p_strideDimensions, const Utils::PaddingType p_paddingType) const;
+        static Utils::PaddingValues calculatePaddingValues(const Utils::Dimensions &p_inputDimensions, const Utils::FilterDimensions &p_filterDimensions, const Utils::StrideDimensions &p_strideDimensions, const Utils::PaddingType p_paddingType);
         void initializeWeightsAndBiases(std::mt19937 &p_rng) final override;
         void setupKernels() final override;
-        Utils::Dimensions validateInputDimensions(const Utils::Dimensions &p_inputDimensions, const Utils::FilterDimensions &p_filterDimensions, const Utils::StrideDimensions &p_strideDimensions) const;
+        static Utils::Dimensions validateInputDimensions(const Utils::Dimensions &p_inputDimensions, const Utils::FilterDimensions &p_filterDimensions, const Utils::StrideDimensions &p_strideDimensions);
 
         void saveConvolutionalLayer(const cl::CommandQueue &p_queue, H5::Group &p_layerGroup) const
         {

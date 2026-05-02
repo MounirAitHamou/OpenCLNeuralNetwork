@@ -19,7 +19,7 @@ namespace Utils
         case 1:
             return PaddingType::Same;
         default:
-            throw std::invalid_argument("Invalid value for PaddingType");
+            CLNN_FATAL("Invalid value for PaddingType");
         }
     }
 }

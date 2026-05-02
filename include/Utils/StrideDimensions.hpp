@@ -12,14 +12,14 @@ namespace Utils
                 {
                     if (dim <= 0)
                     {
-                        throw std::invalid_argument("Dimensions cannot be zero or negative.");
+                        CLNN_FATAL("Dimensions cannot be zero or negative.");
                     }
                 }
                 m_dimensions = p_dimensions;
             }
             else
             {
-                throw std::invalid_argument("StrideDimensions requires 2-dimensional vector.");
+                CLNN_FATAL("StrideDimensions requires 2-dimensional vector.");
             }
         }
 
@@ -31,14 +31,14 @@ namespace Utils
                 {
                     if (dim <= 0)
                     {
-                        throw std::invalid_argument("Dimensions cannot be zero or negative.");
+                        CLNN_FATAL("Dimensions cannot be zero or negative.");
                     }
                 }
                 m_dimensions = p_dimensions;
             }
             else
             {
-                throw std::invalid_argument("StrideDimensions requires 2-dimensional vector.");
+                CLNN_FATAL("StrideDimensions requires 2-dimensional vector.");
             }
         }
 

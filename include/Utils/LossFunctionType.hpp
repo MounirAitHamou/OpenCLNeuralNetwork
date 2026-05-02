@@ -24,7 +24,7 @@ namespace Utils
         case 3:
             return LossFunctionType::SoftmaxCrossEntropy;
         default:
-            throw std::invalid_argument("Invalid value for LossFunctionType");
+            CLNN_FATAL("Invalid value for LossFunctionType");
         }
     }
 

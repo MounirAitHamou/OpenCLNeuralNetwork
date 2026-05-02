@@ -22,7 +22,7 @@ namespace Utils
         return std::make_unique<SoftmaxCrossEntropyLossFunctionArgs>();
     }
 
-    std::unique_ptr<LossFunctions::LossFunction> loadLossFunction(std::shared_ptr<Utils::SharedResources> p_sharedResources, const H5::Group &p_lossFunctionGroup)
+    std::unique_ptr<LossFunctions::LossFunction> loadLossFunction(const std::shared_ptr<Utils::SharedResources> &p_sharedResources, const H5::Group &p_lossFunctionGroup)
     {
         unsigned int lossFunctionType;
         p_lossFunctionGroup.openAttribute("lossFunctionType").read(H5::PredType::NATIVE_UINT, &lossFunctionType);
@@ -38,7 +38,7 @@ namespace Utils
         case LossFunctionType::SoftmaxCrossEntropy:
             return std::make_unique<LossFunctions::SoftmaxCrossEntropy>(p_sharedResources);
         default:
-            throw std::invalid_argument("Invalid LossFunctionType in HDF5 group");
+            CLNN_FATAL("Invalid LossFunctionType in HDF5 group");
         }
     }
 }

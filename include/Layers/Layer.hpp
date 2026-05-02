@@ -84,7 +84,7 @@ namespace Layers
         void enqueueWriteOutputsBuffer(const cl::CommandQueue &p_queue, const std::vector<float> &p_data, const size_t p_batchSize)
         {
             if (p_data.size() != p_batchSize * getTotalOutputElements())
-                throw std::invalid_argument("Data size does not match expected output buffer size");
+                CLNN_FATAL("Data size does not match expected output buffer size");
 
             if (p_batchSize > getBatchSize())
                 setBatchSize(p_batchSize);
@@ -95,7 +95,7 @@ namespace Layers
         void enqueueWriteDeltasBuffer(const cl::CommandQueue &p_queue, const std::vector<float> &p_data, const size_t p_batchSize)
         {
             if (p_data.size() != p_batchSize * getTotalOutputElements())
-                throw std::invalid_argument("Data size does not match expected deltas buffer size");
+                CLNN_FATAL("Data size does not match expected deltas buffer size");
 
             if (p_batchSize > getBatchSize())
                 setBatchSize(p_batchSize);
@@ -190,7 +190,7 @@ namespace Layers
             if (p_options.sampleIndex >= 0 &&
                 static_cast<size_t>(p_options.sampleIndex) >= p_batchSize)
             {
-                throw std::out_of_range("Sample index out of range for visualization");
+                CLNN_FATAL("Sample index out of range for visualization");
             }
 
             size_t sampleCount = (p_options.sampleIndex < 0) ? p_batchSize : 1;

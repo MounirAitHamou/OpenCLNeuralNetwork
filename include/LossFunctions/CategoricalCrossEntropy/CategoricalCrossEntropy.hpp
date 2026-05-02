@@ -4,7 +4,7 @@
 
 namespace LossFunctions
 {
-    class CategoricalCrossEntropy : public LossFunction
+    class CategoricalCrossEntropy final : public LossFunction
     {
     public:
         CategoricalCrossEntropy(std::shared_ptr<Utils::SharedResources> p_sharedResources)

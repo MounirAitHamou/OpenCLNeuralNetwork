@@ -9,7 +9,7 @@ namespace Layers::Trainable
                                            const Utils::PaddingType p_paddingType,
                                            const size_t p_batchSize,
                                            std::mt19937 &p_rng)
-        : TrainableLayer(p_layerId, p_sharedResources, validateInputDimensions(p_inputDimensions, p_filterDimensions, p_strideDimensions), calculateOutputDimensions(validateInputDimensions(p_inputDimensions, p_filterDimensions, p_strideDimensions), p_filterDimensions, p_strideDimensions, p_paddingType), p_batchSize),
+        : TrainableLayer(p_layerId, std::move(p_sharedResources), validateInputDimensions(p_inputDimensions, p_filterDimensions, p_strideDimensions), calculateOutputDimensions(validateInputDimensions(p_inputDimensions, p_filterDimensions, p_strideDimensions), p_filterDimensions, p_strideDimensions, p_paddingType), p_batchSize),
           m_filterDimensions(p_filterDimensions),
           m_strideDimensions(p_strideDimensions),
           m_paddingValues(calculatePaddingValues(m_inputDimensions, p_filterDimensions, p_strideDimensions, p_paddingType)),
@@ -21,7 +21,7 @@ namespace Layers::Trainable
         setupKernels();
     }
 
-    ConvolutionalLayer::ConvolutionalLayer(std::shared_ptr<Utils::SharedResources> p_sharedResources,
+    ConvolutionalLayer::ConvolutionalLayer(const std::shared_ptr<Utils::SharedResources> &p_sharedResources,
                                            const H5::Group &p_layerGroup,
                                            const size_t p_batchSize)
         : TrainableLayer(p_sharedResources, p_layerGroup, p_batchSize)
@@ -41,7 +41,9 @@ namespace Layers::Trainable
                                              const size_t p_batchSize)
     {
         if (m_batchSize < p_batchSize)
+        {
             setBatchSize(p_batchSize);
+        }
 
         cl_command_queue raw_queue = p_forwardBackpropQueue.get();
 
@@ -61,7 +63,7 @@ namespace Layers::Trainable
 
         if (status != clblast::StatusCode::kSuccess)
         {
-            throw std::runtime_error("CLBlast Convgemm failed with status: " + std::to_string(static_cast<int>(status)));
+            CLNN_FATAL("CLBlast Convgemm failed with status: " + std::to_string(static_cast<int>(status)));
         }
 
         cl::Event returnEvent;
@@ -77,7 +79,7 @@ namespace Layers::Trainable
 
         if (err != CL_SUCCESS)
         {
-            throw std::runtime_error("Failed to enqueue bias addition kernel.");
+            CLNN_FATAL("Failed to enqueue bias addition kernel.");
         }
 
         return returnEvent;
@@ -89,14 +91,16 @@ namespace Layers::Trainable
         size_t p_batchSize)
     {
         if (m_batchSize < p_batchSize)
+        {
             setBatchSize(p_batchSize);
+        }
 
         size_t globalWidth = (getInputWidth() + 1) / 2;
 
         cl::NDRange globalSize(
             globalWidth,
-            (size_t)getInputHeight(),
-            (size_t)getInputChannels() * p_batchSize);
+            getInputHeight(),
+            getInputChannels() * p_batchSize);
         Utils::setKernelArgs(14, m_backpropDeltasKernel, p_previousLayerDeltas);
 
         cl::Event executionEvent;
@@ -109,20 +113,22 @@ namespace Layers::Trainable
             &executionEvent);
         if (err != CL_SUCCESS)
         {
-            throw std::runtime_error("Failed to enqueue backprop deltas kernel." + std::to_string(err));
+            CLNN_FATAL("Failed to enqueue backprop deltas kernel." + std::to_string(err));
         }
 
         return executionEvent;
     }
 
     std::pair<cl::Event, cl::Event> ConvolutionalLayer::computeGradients(
-        const cl::CommandQueue &p_queue,
+        const cl::CommandQueue &p_deltaToGradientQueue,
         cl::Event p_backpropEvent,
         const cl::Buffer &p_inputs,
         const size_t p_batchSize)
     {
         if (m_batchSize < p_batchSize)
+        {
             setBatchSize(p_batchSize);
+        }
 
         std::vector<cl::Event> waitList;
         if (p_backpropEvent() != nullptr)
@@ -131,14 +137,14 @@ namespace Layers::Trainable
         }
 
         cl::NDRange globalSize(
-            (size_t)m_filterDimensions.getWidth(),
-            (size_t)m_filterDimensions.getHeight(),
-            (size_t)getInputChannels() * getOutputChannels());
+            m_filterDimensions.getWidth(),
+            m_filterDimensions.getHeight(),
+            getInputChannels() * getOutputChannels());
 
-        Utils::setKernelArgs(14, m_computeWeightsGradientsKernel, p_inputs, (int)p_batchSize);
+        Utils::setKernelArgs(14, m_computeWeightsGradientsKernel, p_inputs, static_cast<int>(p_batchSize));
 
         cl::Event weightsEvent;
-        p_queue.enqueueNDRangeKernel(
+        p_deltaToGradientQueue.enqueueNDRangeKernel(
             m_computeWeightsGradientsKernel,
             cl::NullRange,
             globalSize,
@@ -148,8 +154,8 @@ namespace Layers::Trainable
 
         cl::NDRange biasGlobalSize(getOutputChannels());
         cl::Event biasEvent;
-        Utils::setKernelArgs(5, m_computeBiasesGradientsKernel, (cl_int)p_batchSize);
-        p_queue.enqueueNDRangeKernel(
+        Utils::setKernelArgs(5, m_computeBiasesGradientsKernel, static_cast<cl_int>(p_batchSize));
+        p_deltaToGradientQueue.enqueueNDRangeKernel(
             m_computeBiasesGradientsKernel,
             cl::NullRange,
             biasGlobalSize,
@@ -172,7 +178,7 @@ namespace Layers::Trainable
             (getBiasesSize()) * sizeof(float));
     }
 
-    Utils::Dimensions ConvolutionalLayer::calculateOutputDimensions(const Utils::Dimensions &p_inputDimensions, const Utils::FilterDimensions &p_filterDimensions, const Utils::StrideDimensions &p_strideDimensions, Utils::PaddingType p_paddingType) const
+    Utils::Dimensions ConvolutionalLayer::calculateOutputDimensions(const Utils::Dimensions &p_inputDimensions, const Utils::FilterDimensions &p_filterDimensions, const Utils::StrideDimensions &p_strideDimensions, Utils::PaddingType p_paddingType)
     {
         Utils::PaddingValues paddingValues = calculatePaddingValues(p_inputDimensions, p_filterDimensions, p_strideDimensions, p_paddingType);
         size_t inputHeight = p_inputDimensions.getDimensions()[1];
@@ -186,19 +192,19 @@ namespace Layers::Trainable
         size_t padBottom = paddingValues.getBottom();
         size_t padRight = paddingValues.getRight();
 
-        long numeratorHeight = static_cast<long>(inputHeight - filterHeight + padTop + padBottom);
-        long numeratorWidth = static_cast<long>(inputWidth - filterWidth + padLeft + padRight);
+        auto numeratorHeight = static_cast<long>(inputHeight - filterHeight + padTop + padBottom);
+        auto numeratorWidth = static_cast<long>(inputWidth - filterWidth + padLeft + padRight);
 
-        size_t outputHeight = static_cast<size_t>(
+        auto outputHeight = static_cast<size_t>(
             floor(static_cast<double>(numeratorHeight) / static_cast<double>(strideHeight)) + 1);
 
-        size_t outputWidth = static_cast<size_t>(
+        auto outputWidth = static_cast<size_t>(
             floor(static_cast<double>(numeratorWidth) / static_cast<double>(strideWidth)) + 1);
 
         if (outputHeight == 0 || outputWidth == 0)
         {
-            std::cerr << "Error: Calculated output dimensions are invalid (zero)." << std::endl;
-            throw std::runtime_error("Calculated output dimensions are invalid (zero). Check filter, stride, and padding settings.");
+            std::cerr << "Error: Calculated output dimensions are invalid (zero)." << "\n";
+            CLNN_FATAL("Calculated output dimensions are invalid (zero). Check filter, stride, and padding settings.");
         }
 
         size_t outputChannels = p_filterDimensions.getOutputChannels();
@@ -207,30 +213,30 @@ namespace Layers::Trainable
 
     Utils::Dimensions ConvolutionalLayer::calculateOutputDimensions() const
     {
-        long inputHeight = static_cast<long>(getInputHeight());
-        long inputWidth = static_cast<long>(getInputWidth());
-        long filterHeight = static_cast<long>(m_filterDimensions.getHeight());
-        long filterWidth = static_cast<long>(m_filterDimensions.getWidth());
-        long strideHeight = static_cast<long>(m_strideDimensions.getHeight());
-        long strideWidth = static_cast<long>(m_strideDimensions.getWidth());
-        long padTop = static_cast<long>(m_paddingValues.getTop());
-        long padLeft = static_cast<long>(m_paddingValues.getLeft());
-        long padBottom = static_cast<long>(m_paddingValues.getBottom());
-        long padRight = static_cast<long>(m_paddingValues.getRight());
+        auto inputHeight = static_cast<long>(getInputHeight());
+        auto inputWidth = static_cast<long>(getInputWidth());
+        auto filterHeight = static_cast<long>(m_filterDimensions.getHeight());
+        auto filterWidth = static_cast<long>(m_filterDimensions.getWidth());
+        auto strideHeight = static_cast<long>(m_strideDimensions.getHeight());
+        auto strideWidth = static_cast<long>(m_strideDimensions.getWidth());
+        auto padTop = static_cast<long>(m_paddingValues.getTop());
+        auto padLeft = static_cast<long>(m_paddingValues.getLeft());
+        auto padBottom = static_cast<long>(m_paddingValues.getBottom());
+        auto padRight = static_cast<long>(m_paddingValues.getRight());
 
         long numeratorHeight = inputHeight - filterHeight + padTop + padBottom;
         long numeratorWidth = inputWidth - filterWidth + padLeft + padRight;
 
-        size_t outputHeight = static_cast<size_t>(
+        auto outputHeight = static_cast<size_t>(
             floor(static_cast<double>(numeratorHeight) / static_cast<double>(strideHeight)) + 1);
 
-        size_t outputWidth = static_cast<size_t>(
+        auto outputWidth = static_cast<size_t>(
             floor(static_cast<double>(numeratorWidth) / static_cast<double>(strideWidth)) + 1);
 
         if (outputHeight == 0 || outputWidth == 0)
         {
-            std::cerr << "Error: Calculated output dimensions are invalid (zero)." << std::endl;
-            throw std::runtime_error("Calculated output dimensions are invalid (zero). Check filter, stride, and padding settings.");
+            std::cerr << "Error: Calculated output dimensions are invalid (zero)." << "\n";
+            CLNN_FATAL("Calculated output dimensions are invalid (zero). Check filter, stride, and padding settings.");
         }
 
         size_t outputChannels = m_filterDimensions.getOutputChannels();
@@ -241,7 +247,7 @@ namespace Layers::Trainable
         const Utils::Dimensions &p_inputDimensions,
         const Utils::FilterDimensions &p_filterDimensions,
         const Utils::StrideDimensions &p_strideDimensions,
-        const Utils::PaddingType p_paddingType) const
+        const Utils::PaddingType p_paddingType)
     {
         size_t inputHeight = p_inputDimensions.getDimensions()[1];
         size_t inputWidth = p_inputDimensions.getDimensions()[2];
@@ -250,44 +256,44 @@ namespace Layers::Trainable
         {
         case Utils::PaddingType::Valid:
         {
-            return Utils::PaddingValues(0, 0, 0, 0);
+            return {0, 0, 0, 0};
         }
         case Utils::PaddingType::Same:
         {
-            long long inputH_l = static_cast<long long>(inputHeight);
-            long long inputW_l = static_cast<long long>(inputWidth);
-            long long filterH_l = static_cast<long long>(p_filterDimensions.getHeight());
-            long long filterW_l = static_cast<long long>(p_filterDimensions.getWidth());
-            long long strideH_l = static_cast<long long>(p_strideDimensions.getHeight());
-            long long strideW_l = static_cast<long long>(p_strideDimensions.getWidth());
+            auto inputH_l = static_cast<long long>(inputHeight);
+            auto inputW_l = static_cast<long long>(inputWidth);
+            auto filterH_l = static_cast<long long>(p_filterDimensions.getHeight());
+            auto filterW_l = static_cast<long long>(p_filterDimensions.getWidth());
+            auto strideH_l = static_cast<long long>(p_strideDimensions.getHeight());
+            auto strideW_l = static_cast<long long>(p_strideDimensions.getWidth());
 
             long long outputHeight = (inputH_l + strideH_l - 1) / strideH_l;
             long long outputWidth = (inputW_l + strideW_l - 1) / strideW_l;
 
-            long long totalPaddingHeight_l = (outputHeight - 1) * strideH_l + filterH_l - inputH_l;
-            long long totalPaddingWidth_l = (outputWidth - 1) * strideW_l + filterW_l - inputW_l;
+            long long totalPaddingHeight_l = ((outputHeight - 1) * strideH_l) + filterH_l - inputH_l;
+            long long totalPaddingWidth_l = ((outputWidth - 1) * strideW_l) + filterW_l - inputW_l;
 
             if (totalPaddingHeight_l < 0 || totalPaddingWidth_l < 0)
             {
-                std::cerr << "Error: Invalid convolution configuration. Same padding is insufficient." << std::endl;
-                std::cerr << "Required Padding H: " << totalPaddingHeight_l << ", W: " << totalPaddingWidth_l << std::endl;
-                throw std::invalid_argument("Input dimensions are too small for filter/stride combination, even with 'Same' padding.");
+                std::cerr << "Error: Invalid convolution configuration. Same padding is insufficient." << "\n";
+                std::cerr << "Required Padding H: " << totalPaddingHeight_l << ", W: " << totalPaddingWidth_l << "\n";
+                CLNN_FATAL("Input dimensions are too small for filter/stride combination, even with 'Same' padding.");
             }
 
-            size_t totalPaddingHeight = static_cast<size_t>(totalPaddingHeight_l);
-            size_t totalPaddingWidth = static_cast<size_t>(totalPaddingWidth_l);
+            auto totalPaddingHeight = static_cast<size_t>(totalPaddingHeight_l);
+            auto totalPaddingWidth = static_cast<size_t>(totalPaddingWidth_l);
 
             size_t padTop = totalPaddingHeight / 2;
             size_t padBottom = totalPaddingHeight - padTop;
             size_t padLeft = totalPaddingWidth / 2;
             size_t padRight = totalPaddingWidth - padLeft;
 
-            return Utils::PaddingValues(padTop, padBottom, padLeft, padRight);
+            return {padTop, padBottom, padLeft, padRight};
         }
         default:
         {
-            std::cerr << "Warning: Unsupported padding type. Setting padding to zero." << std::endl;
-            return Utils::PaddingValues(0, 0, 0, 0);
+            std::cerr << "Warning: Unsupported padding type. Setting padding to zero." << "\n";
+            return {0, 0, 0, 0};
         }
         }
     }
@@ -297,8 +303,8 @@ namespace Layers::Trainable
         std::vector<float> h_weights(getWeightsSize());
         std::vector<float> h_biases(getBiasesSize());
 
-        float fan = (float)m_filterDimensions.getHeight() * m_filterDimensions.getWidth();
-        float limit = std::sqrt(6.0f / (getInputChannels() + getOutputChannels()) * fan);
+        auto fan = static_cast<float>(m_filterDimensions.getHeight() * m_filterDimensions.getWidth());
+        float limit = std::sqrt(6.0F / (getInputChannels() + getOutputChannels()) * fan);
 
         for (auto &weight : h_weights)
         {
@@ -307,7 +313,7 @@ namespace Layers::Trainable
 
         for (auto &bias : h_biases)
         {
-            bias = 0.0f;
+            bias = 0.0F;
         }
 
         m_weights = cl::Buffer(
@@ -331,77 +337,77 @@ namespace Layers::Trainable
         m_biasKernel = cl::Kernel(m_sharedResources->getProgram(), "convolutionalBias", &err);
         if (err != CL_SUCCESS)
         {
-            throw std::runtime_error("Failed to create convBias kernel");
+            CLNN_FATAL("Failed to create convBias kernel");
         }
         Utils::setKernelArgs(m_biasKernel,
                              getBiases(),
                              getOutputs(),
-                             (cl_int)getOutputHeight(),
-                             (cl_int)getOutputWidth(),
-                             (cl_int)getOutputChannels());
+                             static_cast<cl_int>(getOutputHeight()),
+                             static_cast<cl_int>(getOutputWidth()),
+                             static_cast<cl_int>(getOutputChannels()));
         m_backpropDeltasKernel = cl::Kernel(m_sharedResources->getProgram(), "convolutionalBackpropDeltas", &err);
 
         if (err != CL_SUCCESS)
         {
-            throw std::runtime_error("Failed to create backprop kernel.");
+            CLNN_FATAL("Failed to create backprop kernel.");
         }
         Utils::setKernelArgs(m_backpropDeltasKernel,
                              getWeights(),
                              getDeltas(),
-                             (cl_int)getInputHeight(),
-                             (cl_int)getInputWidth(),
-                             (cl_int)getOutputHeight(),
-                             (cl_int)getOutputWidth(),
-                             (cl_int)m_filterDimensions.getHeight(),
-                             (cl_int)m_filterDimensions.getWidth(),
-                             (cl_int)m_strideDimensions.getHeight(),
-                             (cl_int)m_strideDimensions.getWidth(),
-                             (cl_int)m_paddingValues.getTop(),
-                             (cl_int)m_paddingValues.getLeft(),
-                             (cl_int)getInputChannels(),
-                             (cl_int)getOutputChannels());
+                             static_cast<cl_int>(getInputHeight()),
+                             static_cast<cl_int>(getInputWidth()),
+                             static_cast<cl_int>(getOutputHeight()),
+                             static_cast<cl_int>(getOutputWidth()),
+                             static_cast<cl_int>(m_filterDimensions.getHeight()),
+                             static_cast<cl_int>(m_filterDimensions.getWidth()),
+                             static_cast<cl_int>(m_strideDimensions.getHeight()),
+                             static_cast<cl_int>(m_strideDimensions.getWidth()),
+                             static_cast<cl_int>(m_paddingValues.getTop()),
+                             static_cast<cl_int>(m_paddingValues.getLeft()),
+                             static_cast<cl_int>(getInputChannels()),
+                             static_cast<cl_int>(getOutputChannels()));
 
         m_computeWeightsGradientsKernel = cl::Kernel(m_sharedResources->getProgram(), "convolutionalComputeWeightsGradients", &err);
         if (err != CL_SUCCESS)
         {
-            throw std::runtime_error("Failed to create compute weights gradients kernel.");
+            CLNN_FATAL("Failed to create compute weights gradients kernel.");
         }
 
         Utils::setKernelArgs(m_computeWeightsGradientsKernel,
                              getDeltas(),
                              getWeightsGradients(),
-                             (cl_int)getInputChannels(),
-                             (cl_int)getInputHeight(),
-                             (cl_int)getInputWidth(),
-                             (cl_int)getOutputChannels(),
-                             (cl_int)getOutputHeight(),
-                             (cl_int)getOutputWidth(),
-                             (cl_int)m_filterDimensions.getHeight(),
-                             (cl_int)m_filterDimensions.getWidth(),
-                             (cl_int)m_strideDimensions.getHeight(),
-                             (cl_int)m_strideDimensions.getWidth(),
-                             (cl_int)m_paddingValues.getTop(),
-                             (cl_int)m_paddingValues.getLeft());
+                             static_cast<cl_int>(getInputChannels()),
+                             static_cast<cl_int>(getInputHeight()),
+                             static_cast<cl_int>(getInputWidth()),
+                             static_cast<cl_int>(getOutputChannels()),
+                             static_cast<cl_int>(getOutputHeight()),
+                             static_cast<cl_int>(getOutputWidth()),
+                             static_cast<cl_int>(m_filterDimensions.getHeight()),
+                             static_cast<cl_int>(m_filterDimensions.getWidth()),
+                             static_cast<cl_int>(m_strideDimensions.getHeight()),
+                             static_cast<cl_int>(m_strideDimensions.getWidth()),
+                             static_cast<cl_int>(m_paddingValues.getTop()),
+                             static_cast<cl_int>(m_paddingValues.getLeft()));
 
         m_computeBiasesGradientsKernel = cl::Kernel(m_sharedResources->getProgram(), "convolutionalComputeBiasesGradients", &err);
         if (err != CL_SUCCESS)
         {
-            throw std::runtime_error("Failed to create compute biases gradients kernel.");
+            CLNN_FATAL("Failed to create compute biases gradients kernel.");
         }
 
         Utils::setKernelArgs(
             m_computeBiasesGradientsKernel,
             getDeltas(),
             getBiasesGradients(),
-            (cl_int)getOutputChannels(),
-            (cl_int)getOutputHeight(),
-            (cl_int)getOutputWidth());
+            static_cast<cl_int>(getOutputChannels()),
+            static_cast<cl_int>(getOutputHeight()),
+            static_cast<cl_int>(getOutputWidth()));
     }
 
     Utils::Dimensions ConvolutionalLayer::validateInputDimensions(
         const Utils::Dimensions &p_inputDimensions,
         const Utils::FilterDimensions &p_filterDimensions,
-        const Utils::StrideDimensions &p_strideDimensions) const
+        const Utils::StrideDimensions &p_strideDimensions)
     {
         std::vector<size_t> dims = p_inputDimensions.getDimensions();
         size_t initial_dims = dims.size();
@@ -421,30 +427,30 @@ namespace Layers::Trainable
         }
         else
         {
-            std::cerr << "Error: Input dimensions must be 1D, 2D, or 3D (Channels, Height, Width)." << std::endl;
-            throw std::invalid_argument("Input dimensions must be 1D, 2D, or 3D.");
+            std::cerr << "Error: Input dimensions must be 1D, 2D, or 3D (Channels, Height, Width)." << "\n";
+            CLNN_FATAL("Input dimensions must be 1D, 2D, or 3D.");
         }
 
         if (p_filterDimensions.getInputChannels() != validDimensions.getDimensions()[0])
         {
             std::cerr << "Error: Filter's input channels (" << p_filterDimensions.getInputChannels()
-                      << ") do not match the input volume's channels (" << validDimensions.getDimensions()[0] << ")." << std::endl;
-            throw std::invalid_argument("Input channels of filter dimensions must match the channels of input dimensions.");
+                      << ") do not match the input volume's channels (" << validDimensions.getDimensions()[0] << ")." << "\n";
+            CLNN_FATAL("Input channels of filter dimensions must match the channels of input dimensions.");
         }
 
         if (p_filterDimensions.getHeight() <= 0 || p_filterDimensions.getWidth() <= 0)
         {
             std::cerr << "Error: Filter dimensions (" << p_filterDimensions.getHeight() << "x" << p_filterDimensions.getWidth()
-                      << ") must be strictly positive integers (> 0)." << std::endl;
-            throw std::invalid_argument("Filter dimensions must be strictly positive.");
+                      << ") must be strictly positive integers (> 0)." << "\n";
+            CLNN_FATAL("Filter dimensions must be strictly positive.");
         }
 
         if (p_strideDimensions.getHeight() <= 0 || p_strideDimensions.getWidth() <= 0)
         {
             std::cerr << "Error: Stride dimensions ("
                       << p_strideDimensions.getHeight() << "x" << p_strideDimensions.getWidth()
-                      << ") must be strictly positive integers (> 0)." << std::endl;
-            throw std::invalid_argument("Stride dimensions must be strictly positive.");
+                      << ") must be strictly positive integers (> 0)." << "\n";
+            CLNN_FATAL("Stride dimensions must be strictly positive.");
         }
 
         return validDimensions;

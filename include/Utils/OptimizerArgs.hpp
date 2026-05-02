@@ -142,6 +142,6 @@ namespace Utils
                                                  float p_beta1 = 0.9f, float p_beta2 = 0.999f, float p_epsilon = 1e-8f);
 
     std::unique_ptr<Optimizers::Optimizer> loadOptimizer(
-        std::shared_ptr<SharedResources> p_sharedResources,
+        const std::shared_ptr<SharedResources> &p_sharedResources,
         const H5::Group &p_optimizerGroup);
 }

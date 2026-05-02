@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.10)
 project(OpenCLNeuralNetwork LANGUAGES CXX)
 
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
@@ -92,6 +94,11 @@ target_compile_definitions(OpenCLNeuralNetwork PRIVATE
 
 target_link_libraries(OpenCLNeuralNetwork PRIVATE
     OpenCLNeuralNetworkLib
+)
+
+set_target_properties(OpenCLNeuralNetworkLib PROPERTIES
+    CXX_CLANG_TIDY
+    "clang-tidy;-checks=modernize-*,readability-*,performance-*,-modernize-use-trailing-return-type,-readability-magic-numbers,-readability-function-cognitive-complexity,-readability-identifier-length;-header-filter=^(include/|src/)"
 )
 
 if (MSVC)

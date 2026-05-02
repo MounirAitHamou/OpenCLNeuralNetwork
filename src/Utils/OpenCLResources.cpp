@@ -7,14 +7,14 @@ namespace Utils
         cl::Platform::get(&platforms);
         if (platforms.empty())
         {
-            throw std::runtime_error("No OpenCL platforms found. Please ensure OpenCL drivers are installed.");
+            CLNN_FATAL("No OpenCL platforms found. Please ensure OpenCL drivers are installed.");
         }
         if (p_verbose)
         {
             std::cout << "Total platforms found: " << platforms.size() << "\n";
             for (size_t i = 0; i < platforms.size(); ++i)
             {
-                std::cout << "Platform " << i << ": " << platforms[i].getInfo<CL_PLATFORM_NAME>() << std::endl;
+                std::cout << "Platform " << i << ": " << platforms[i].getInfo<CL_PLATFORM_NAME>() << "\n";
             }
         }
         size_t platformIndex = p_platformIndex;
@@ -26,8 +26,9 @@ namespace Utils
 
         cl::Platform platform = platforms[platformIndex];
         if (p_verbose)
-            std::cout << "Using platform: " << platform.getInfo<CL_PLATFORM_NAME>() << std::endl;
-
+        {
+            std::cout << "Using platform: " << platform.getInfo<CL_PLATFORM_NAME>() << "\n";
+        }
         std::vector<cl::Device> devices;
         platform.getDevices(CL_DEVICE_TYPE_GPU, &devices);
         if (devices.empty())
@@ -35,7 +36,7 @@ namespace Utils
             platform.getDevices(CL_DEVICE_TYPE_CPU, &devices);
             if (devices.empty())
             {
-                throw std::runtime_error("No OpenCL devices (GPU or CPU) found on the selected platform.");
+                CLNN_FATAL("No OpenCL devices (GPU or CPU) found on the selected platform.");
             }
         }
         if (p_verbose)
@@ -61,8 +62,9 @@ namespace Utils
 
         cl::Device device = devices[deviceIndex];
         if (p_verbose)
+        {
             std::cout << "Selected device: " << device.getInfo<CL_DEVICE_NAME>() << "\n";
-
+        }
         cl::Context context(device);
         cl::CommandQueue forwardBackpropQueue(context, device, CL_QUEUE_PROFILING_ENABLE);
         cl::CommandQueue deltaToGradientQueue;
@@ -70,7 +72,7 @@ namespace Utils
 
         cl_ulong props;
         device.getInfo(CL_DEVICE_QUEUE_PROPERTIES, &props);
-        if (props & CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE)
+        if ((props & CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE) != 0U)
         {
             deltaToGradientQueue = cl::CommandQueue(context, device, CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE | CL_QUEUE_PROFILING_ENABLE);
             concurrentQueue = cl::CommandQueue(context, device, CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE | CL_QUEUE_PROFILING_ENABLE);
@@ -87,22 +89,26 @@ namespace Utils
 
         if (kernelFiles.empty())
         {
-            std::cout << "No kernel files found or folder does not exist. Continuing without kernels." << std::endl;
+            std::cout << "No kernel files found or folder does not exist. Continuing without kernels." << "\n";
             const char *emptyKernel = "__kernel void dummy() {}";
             sources.emplace_back(emptyKernel, strlen(emptyKernel));
         }
         else
         {
             if (p_verbose)
-                std::cout << "Found " << kernelFiles.size() << " kernel files:" << std::endl;
+            {
+                std::cout << "Found " << kernelFiles.size() << " kernel files:" << "\n";
+            }
             for (const auto &filePath : kernelFiles)
             {
                 if (p_verbose)
-                    std::cout << "- " << filePath << std::endl;
+                {
+                    std::cout << "- " << filePath << "\n";
+                }
                 std::ifstream file(filePath);
                 if (!file)
                 {
-                    std::cerr << "Error: Could not open kernel file: " << filePath << std::endl;
+                    std::cerr << "Error: Could not open kernel file: " << filePath << "\n";
                     continue;
                 }
                 std::string sourceCode((std::istreambuf_iterator<char>(file)),
@@ -113,43 +119,47 @@ namespace Utils
 
         cl::Program program(context, sources);
 
-        if (!sources.empty())
+        if (sources.empty())
         {
-            std::string buildOptions = "-I " + p_kernelsPath + "/include -DCL_ENABLE_PRINTF";
-            cl_int buildStatus = program.build({device}, buildOptions.c_str());
-            std::string buildLog = program.getBuildInfo<CL_PROGRAM_BUILD_LOG>(device);
-            if (!buildLog.empty())
-                std::cerr << "Build log for device " << device.getInfo<CL_DEVICE_NAME>() << ":\n"
-                          << buildLog << std::endl;
-            if (buildStatus != CL_SUCCESS)
-            {
-                std::cerr << "Warning: OpenCL program build failed, continuing without kernels.\n";
-            }
+            return {std::move(context), std::move(program), std::move(forwardBackpropQueue), std::move(deltaToGradientQueue), std::move(concurrentQueue)};
         }
 
-        return OpenCLResources(
+        std::string buildOptions = "-I " + p_kernelsPath + "/include -DCL_ENABLE_PRINTF";
+        cl_int buildStatus = program.build({device}, buildOptions.c_str());
+        std::string buildLog = program.getBuildInfo<CL_PROGRAM_BUILD_LOG>(device);
+        if (!buildLog.empty())
+        {
+            std::cerr << "Build log for device " << device.getInfo<CL_DEVICE_NAME>() << ":\n"
+                      << buildLog << "\n";
+        }
+        if (buildStatus != CL_SUCCESS)
+        {
+            std::cerr << "Warning: OpenCL program build failed, continuing without kernels.\n";
+        }
+
+        return {
             std::move(context),
             std::move(program),
             std::move(forwardBackpropQueue),
             std::move(deltaToGradientQueue),
-            std::move(concurrentQueue));
+            std::move(concurrentQueue)};
     }
 
     OpenCLResources OpenCLResources::createOpenCLResources(std::shared_ptr<SharedResources> p_sharedResources)
     {
         if (!p_sharedResources)
         {
-            std::cerr << "Error: SharedResources pointer is null." << std::endl;
-            throw std::invalid_argument("SharedResources pointer is null.");
+            std::cerr << "Error: SharedResources pointer is null." << "\n";
+            CLNN_FATAL("SharedResources pointer is null.");
         }
         cl::Context context = p_sharedResources->getContext();
         std::vector<cl::Device> devices = context.getInfo<CL_CONTEXT_DEVICES>();
         if (devices.empty())
         {
-            std::cerr << "Error: No devices found in the provided context." << std::endl;
-            throw std::runtime_error("No devices found in the provided context.");
+            std::cerr << "Error: No devices found in the provided context." << "\n";
+            CLNN_FATAL("No devices found in the provided context.");
         }
-        cl::Device device = devices[0];
+        cl::Device &device = devices[0];
 
         cl::CommandQueue forwardBackpropQueue(context, device, CL_QUEUE_PROFILING_ENABLE);
         cl::CommandQueue deltaToGradientQueue;
@@ -157,7 +167,7 @@ namespace Utils
 
         cl_ulong props;
         device.getInfo(CL_DEVICE_QUEUE_PROPERTIES, &props);
-        if (props & CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE)
+        if ((props & CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE) != 0U)
         {
             deltaToGradientQueue = cl::CommandQueue(context, device, CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE | CL_QUEUE_PROFILING_ENABLE);
             concurrentQueue = cl::CommandQueue(context, device, CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE | CL_QUEUE_PROFILING_ENABLE);
@@ -167,73 +177,77 @@ namespace Utils
             deltaToGradientQueue = cl::CommandQueue(context, device, CL_QUEUE_PROFILING_ENABLE);
             concurrentQueue = cl::CommandQueue(context, device, CL_QUEUE_PROFILING_ENABLE);
         }
-        return OpenCLResources(std::move(p_sharedResources), std::move(forwardBackpropQueue), std::move(deltaToGradientQueue), std::move(concurrentQueue));
+        return {std::move(p_sharedResources), std::move(forwardBackpropQueue), std::move(deltaToGradientQueue), std::move(concurrentQueue)};
     }
 
     void OpenCLResources::print() const
     {
-        std::cout << "--- OpenCLResources Status ---" << std::endl;
+        std::cout << "--- OpenCLResources Status ---" << "\n";
 
-        if (m_sharedResources)
+        if (m_sharedResources != nullptr)
         {
-            std::cout << "SharedResources: Initialized" << std::endl;
+            std::cout << "SharedResources: Initialized" << "\n";
 
-            if (m_sharedResources->getContext()())
+            if (m_sharedResources->getContext()() != nullptr)
             {
-                std::cout << "  Context: Valid" << std::endl;
+                std::cout << "  Context: Valid" << "\n";
             }
             else
             {
-                std::cout << "  Context: Invalid" << std::endl;
+                std::cout << "  Context: Invalid" << "\n";
             }
 
-            if (m_sharedResources->getProgram()())
+            if (m_sharedResources->getProgram()() != nullptr)
             {
-                std::cout << "  Program: Valid" << std::endl;
+                std::cout << "  Program: Valid" << "\n";
             }
             else
             {
-                std::cout << "  Program: Invalid" << std::endl;
+                std::cout << "  Program: Invalid" << "\n";
             }
         }
         else
         {
-            std::cout << "SharedResources: Not Initialized" << std::endl;
+            std::cout << "SharedResources: Not Initialized" << "\n";
         }
 
-        if (m_forwardBackpropQueue())
+        if (m_forwardBackpropQueue() != nullptr)
         {
-            std::cout << "ForwardBackpropQueue: Valid" << std::endl;
+            std::cout << "ForwardBackpropQueue: Valid" << "\n";
         }
         else
         {
-            std::cout << "ForwardBackpropQueue: Invalid" << std::endl;
+            std::cout << "ForwardBackpropQueue: Invalid" << "\n";
         }
 
-        if (m_deltaToGradientQueue())
+        if (m_deltaToGradientQueue() != nullptr)
         {
-            std::cout << "DeltaToGradientQueue: Valid" << std::endl;
+            std::cout << "DeltaToGradientQueue: Valid" << "\n";
         }
         else
         {
-            std::cout << "DeltaToGradientQueue: Invalid" << std::endl;
+            std::cout << "DeltaToGradientQueue: Invalid" << "\n";
         }
 
-        if (m_concurrentQueue())
+        if (m_concurrentQueue() != nullptr)
         {
-            std::cout << "ConcurrentQueue: Valid" << std::endl;
+            std::cout << "ConcurrentQueue: Valid" << "\n";
         }
         else
         {
-            std::cout << "ConcurrentQueue: Invalid" << std::endl;
+            std::cout << "ConcurrentQueue: Invalid" << "\n";
         }
-        std::cout << "------------------------------" << std::endl;
+        std::cout << "------------------------------" << "\n";
     }
 
     bool OpenCLResources::valid() const
     {
-        return m_sharedResources && m_sharedResources->getContext()() && m_sharedResources->getProgram()() &&
-               m_forwardBackpropQueue() && m_deltaToGradientQueue() && m_concurrentQueue();
+        return m_sharedResources != nullptr &&
+               m_sharedResources->getContext()() != nullptr &&
+               m_sharedResources->getProgram()() != nullptr &&
+               m_forwardBackpropQueue() != nullptr &&
+               m_deltaToGradientQueue() != nullptr &&
+               m_concurrentQueue() != nullptr;
     }
 
     std::vector<std::string> OpenCLResources::getAllKernelFiles(const std::string &p_folderPath)
@@ -253,14 +267,14 @@ namespace Utils
             }
         }
 
-        std::sort(filePaths.begin(), filePaths.end());
+        std::ranges::sort(filePaths);
 
         return filePaths;
     }
 
     void saveBuffer(const cl::CommandQueue &p_queue, const cl::Buffer &p_buffer, H5::Group &p_group, const std::string &p_name, size_t p_size)
     {
-        if (H5Lexists(p_group.getId(), p_name.c_str(), H5P_DEFAULT))
+        if (H5Lexists(p_group.getId(), p_name.c_str(), H5P_DEFAULT) > 0)
         {
             std::cerr << "Warning: Dataset '" << p_name << "' already exists. Skipping write.\n";
             return;
@@ -269,8 +283,8 @@ namespace Utils
         p_queue.enqueueReadBuffer(p_buffer, BLOCKING, NO_OFFSET, p_size * sizeof(float), host_data.data());
 
         H5::DataSpace dataspace(H5S_SIMPLE);
-        hsize_t dims[1] = {p_size};
-        dataspace.setExtentSimple(1, dims);
+        std::array<hsize_t, 1> dims{p_size};
+        dataspace.setExtentSimple(1, dims.data());
 
         H5::DataSet dataset = p_group.createDataSet(p_name, H5::PredType::NATIVE_FLOAT, dataspace);
         dataset.write(host_data.data(), H5::PredType::NATIVE_FLOAT);
@@ -329,121 +343,127 @@ namespace Utils
         return true;
     }
 
-    void cpuGemm2D(const std::vector<std::vector<float>> &A,
-                   const std::vector<std::vector<float>> &B,
-                   std::vector<std::vector<float>> &C,
-                   bool transposeA,
-                   bool transposeB)
+    void cpuGemm2D(const std::vector<std::vector<float>> &p_A,
+                   const std::vector<std::vector<float>> &p_B,
+                   std::vector<std::vector<float>> &p_C,
+                   bool p_transposeA,
+                   bool p_transposeB)
     {
-        size_t M = transposeA ? A[0].size() : A.size();
-        size_t K = transposeA ? A.size() : A[0].size();
-        size_t N = transposeB ? B.size() : B[0].size();
+        size_t firstDimension = p_transposeA ? p_A[0].size() : p_A.size();
+        size_t secondDimension = p_transposeA ? p_A.size() : p_A[0].size();
+        size_t thirdDimension = p_transposeB ? p_B.size() : p_B[0].size();
 
-        C.assign(M, std::vector<float>(N, 0.0f));
+        p_C.assign(firstDimension, std::vector<float>(secondDimension, 0.0F));
 
-        for (size_t m = 0; m < M; ++m)
+        for (size_t firstIndex = 0; firstIndex < firstDimension; ++firstIndex)
         {
-            for (size_t n = 0; n < N; ++n)
+            for (size_t secondIndex = 0; secondIndex < secondDimension; ++secondIndex)
             {
-                float sum = 0.0f;
-                for (size_t k = 0; k < K; ++k)
+                float sum = 0.0F;
+                for (size_t thirdIndex = 0; thirdIndex < thirdDimension; ++thirdIndex)
                 {
-                    float a = transposeA ? A[k][m] : A[m][k];
-                    float b = transposeB ? B[n][k] : B[k][n];
-                    sum += a * b;
+                    float aEntry = p_transposeA ? p_A[thirdIndex][firstIndex] : p_A[firstIndex][thirdIndex];
+                    float bEntry = p_transposeB ? p_B[secondIndex][thirdIndex] : p_B[thirdIndex][secondIndex];
+                    sum += aEntry * bEntry;
                 }
-                C[m][n] = sum;
+                p_C[firstIndex][secondIndex] = sum;
             }
         }
     }
 
-    void cpuGemv2D(const std::vector<std::vector<float>> &A,
-                   const std::vector<float> &x,
-                   std::vector<float> &y,
-                   bool transposeA)
+    void cpuGemv2D(const std::vector<std::vector<float>> &p_A,
+                   const std::vector<float> &p_x,
+                   std::vector<float> &p_y,
+                   bool p_transposeA)
     {
-        size_t M = transposeA ? A[0].size() : A.size();
-        size_t N = transposeA ? A.size() : A[0].size();
+        size_t firstDimension = p_transposeA ? p_A[0].size() : p_A.size();
+        size_t secondDimension = p_transposeA ? p_A.size() : p_A[0].size();
 
-        y.assign(M, 0.0f);
+        p_y.assign(firstDimension, 0.0F);
 
-        for (size_t m = 0; m < M; ++m)
+        for (size_t firstIndex = 0; firstIndex < firstDimension; ++firstIndex)
         {
-            float sum = 0.0f;
-            for (size_t n = 0; n < N; ++n)
+            float sum = 0.0F;
+            for (size_t secondIndex = 0; secondIndex < secondDimension; ++secondIndex)
             {
-                float a = transposeA ? A[n][m] : A[m][n];
-                sum += a * x[n];
+                float aEntry = p_transposeA ? p_A[secondIndex][firstIndex] : p_A[firstIndex][secondIndex];
+                sum += aEntry * p_x[secondIndex];
             }
-            y[m] = sum;
+            p_y[firstIndex] = sum;
         }
     }
 
     std::vector<std::vector<float>> readBuffer2D(
-        const cl::CommandQueue &queue,
-        const cl::Buffer &buffer,
-        size_t rows,
-        size_t cols)
+        const cl::CommandQueue &p_queue,
+        const cl::Buffer &p_buffer,
+        size_t p_rows,
+        size_t p_cols)
     {
-        std::vector<float> flat(rows * cols);
-        cl_int err = queue.enqueueReadBuffer(buffer, BLOCKING, NO_OFFSET, sizeof(float) * flat.size(), flat.data());
+        std::vector<float> flat(p_rows * p_cols);
+        cl_int err = p_queue.enqueueReadBuffer(p_buffer, BLOCKING, NO_OFFSET, sizeof(float) * flat.size(), flat.data());
         if (err != CL_SUCCESS)
         {
-            throw std::runtime_error("Failed to read OpenCL buffer (error code: " + std::to_string(err) + ")");
+            CLNN_FATAL("Failed to read OpenCL buffer (error code: " + std::to_string(err) + ")");
         }
 
-        std::vector<std::vector<float>> matrix(rows, std::vector<float>(cols));
-        for (size_t i = 0; i < rows; ++i)
+        std::vector<std::vector<float>> matrix(p_rows, std::vector<float>(p_cols));
+        for (size_t i = 0; i < p_rows; ++i)
         {
-            for (size_t j = 0; j < cols; ++j)
+            for (size_t j = 0; j < p_cols; ++j)
             {
-                matrix[i][j] = flat[i * cols + j];
+                matrix[i][j] = flat[(i * p_cols) + j];
             }
         }
 
         return matrix;
     }
 
-    bool compare2D(const std::vector<std::vector<float>> &A,
-                   const std::vector<std::vector<float>> &B,
-                   float tol)
+    bool compare2D(const std::vector<std::vector<float>> &p_A,
+                   const std::vector<std::vector<float>> &p_B,
+                   float p_tol)
     {
-        for (size_t i = 0; i < A.size(); ++i)
-            for (size_t j = 0; j < A[0].size(); ++j)
-                if (std::fabs(A[i][j] - B[i][j]) > tol)
+        for (size_t i = 0; i < p_A.size(); ++i)
+        {
+            for (size_t j = 0; j < p_A[0].size(); ++j)
+            {
+                if (std::fabs(p_A[i][j] - p_B[i][j]) > p_tol)
                 {
                     std::cerr << "Mismatch at (" << i << "," << j << "): "
-                              << "CPU=" << A[i][j] << ", GPU=" << B[i][j] << std::endl;
+                              << "CPU=" << p_A[i][j] << ", GPU=" << p_B[i][j] << "\n";
                     return false;
                 }
+            }
+        }
         return true;
     }
 
     std::vector<float> readBuffer1D(
-        const cl::CommandQueue &queue,
-        const cl::Buffer &buffer,
-        size_t size)
+        const cl::CommandQueue &p_queue,
+        const cl::Buffer &p_buffer,
+        size_t p_size)
     {
-        std::vector<float> data(size);
-        cl_int err = queue.enqueueReadBuffer(buffer, BLOCKING, NO_OFFSET, sizeof(float) * size, data.data());
+        std::vector<float> data(p_size);
+        cl_int err = p_queue.enqueueReadBuffer(p_buffer, BLOCKING, NO_OFFSET, sizeof(float) * p_size, data.data());
         if (err != CL_SUCCESS)
         {
-            throw std::runtime_error("Failed to read OpenCL buffer (error code: " + std::to_string(err) + ")");
+            CLNN_FATAL("Failed to read OpenCL buffer (error code: " + std::to_string(err) + ")");
         }
         return data;
     }
 
-    bool compare1D(const std::vector<float> &A,
-                   const std::vector<float> &B,
-                   float tol)
+    bool compare1D(const std::vector<float> &p_A,
+                   const std::vector<float> &p_B,
+                   float p_tol)
     {
-        for (size_t i = 0; i < A.size(); ++i)
-            if (std::fabs(A[i] - B[i]) > tol)
+        for (size_t i = 0; i < p_A.size(); ++i)
+        {
+            if (std::fabs(p_A[i] - p_B[i]) > p_tol)
             {
                 std::cerr << "Mismatch at index " << i << ": "
-                          << "CPU=" << A[i] << ", GPU=" << B[i] << std::endl;
+                          << "CPU=" << p_A[i] << ", GPU=" << p_B[i] << "\n";
                 return false;
             }
+        }
         return true;
     }
 }

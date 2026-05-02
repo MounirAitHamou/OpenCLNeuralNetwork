@@ -2,7 +2,7 @@
 
 namespace Utils
 {
-    EventProfile EventProfiler::profileEvent(const cl::Event p_event, const std::string &p_name)
+    EventProfile EventProfiler::profileEvent(const cl::Event &p_event, const std::string &p_name)
     {
         EventProfile profile;
         profile.m_name = p_name;
@@ -16,20 +16,20 @@ namespace Utils
     void EventProfiler::printTimeline(const std::vector<EventProfile> &p_events)
     {
         std::vector<EventProfile> sorted = p_events;
-        std::sort(sorted.begin(), sorted.end(),
-                  [](const EventProfile &a, const EventProfile &b)
-                  {
-                      return a.m_start < b.m_start;
-                  });
+        std::ranges::sort(sorted,
+                          [](const EventProfile &eventA, const EventProfile &eventB)
+                          {
+                              return eventA.m_start < eventB.m_start;
+                          });
 
         std::cout << "=== GPU Event Timeline (ns → ms) ===\n";
-        for (const auto &e : sorted)
+        for (const auto &event : sorted)
         {
-            double startMs = e.m_start * 1e-6;
-            double endMs = e.m_end * 1e-6;
-            double durMs = (e.m_end - e.m_start) * 1e-6;
+            double startMs = event.m_start * 1e-6;
+            double endMs = event.m_end * 1e-6;
+            double durMs = (event.m_end - event.m_start) * 1e-6;
 
-            std::cout << e.m_name
+            std::cout << event.m_name
                       << " | start: " << startMs << " ms"
                       << " | end: " << endMs << " ms"
                       << " | dur: " << durMs << " ms\n";

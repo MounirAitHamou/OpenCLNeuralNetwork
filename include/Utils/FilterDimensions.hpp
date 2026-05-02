@@ -14,14 +14,14 @@ namespace Utils
                 {
                     if (dim <= 0)
                     {
-                        throw std::invalid_argument("Dimensions cannot be zero or negative.");
+                        CLNN_FATAL("Dimensions cannot be zero or negative.");
                     }
                 }
                 m_dimensions = p_dimensions;
             }
             else
             {
-                throw std::invalid_argument("FilterDimensions requires 4-dimensional vector.");
+                CLNN_FATAL("FilterDimensions requires 4-dimensional vector.");
             }
         }
 
@@ -33,14 +33,14 @@ namespace Utils
                 {
                     if (dim <= 0)
                     {
-                        throw std::invalid_argument("Dimensions cannot be zero or negative.");
+                        CLNN_FATAL("Dimensions cannot be zero or negative.");
                     }
                 }
                 m_dimensions = p_dimensions;
             }
             else
             {
-                throw std::invalid_argument("FilterDimensions requires 4-dimensional vector.");
+                CLNN_FATAL("FilterDimensions requires 4-dimensional vector.");
             }
         }
 

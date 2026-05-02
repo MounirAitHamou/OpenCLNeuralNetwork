@@ -84,5 +84,5 @@ namespace Utils
     std::unique_ptr<LossFunctionArgs> makeBinaryCrossEntropyLossFunctionArgs();
     std::unique_ptr<LossFunctionArgs> makeSoftmaxCrossEntropyLossFunctionArgs();
 
-    std::unique_ptr<LossFunctions::LossFunction> loadLossFunction(std::shared_ptr<Utils::SharedResources> p_sharedResources, const H5::Group &p_lossFunctionGroup);
+    std::unique_ptr<LossFunctions::LossFunction> loadLossFunction(const std::shared_ptr<Utils::SharedResources> &p_sharedResources, const H5::Group &p_lossFunctionGroup);
 }

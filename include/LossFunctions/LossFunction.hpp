@@ -6,6 +6,8 @@
 #include <cmath>
 #include <algorithm>
 
+constexpr float kEpsilon = 1e-15F;
+
 namespace LossFunctions
 {
     class LossFunction
@@ -51,7 +53,7 @@ namespace LossFunctions
             waitList.push_back(readEvent);
             cl_int err = cl::Event::waitForEvents(waitList);
             if (err != CL_SUCCESS)
-                throw cl::Error(err, "Failed to read predictions or targets from device");
+                CLNN_FATAL("Failed to read predictions or targets from device: " + std::to_string(err));
             return computeLoss(hostPredictions, targets, outputElements, batchSize);
         }
 

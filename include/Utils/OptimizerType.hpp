@@ -22,7 +22,7 @@ namespace Utils
         case 2:
             return OptimizerType::AdamW;
         default:
-            throw std::invalid_argument("Invalid value for OptimizerType");
+            CLNN_FATAL("Invalid value for OptimizerType");
         }
     }
 

@@ -44,7 +44,7 @@ namespace Layers::Trainable
         {
             if (p_weightsVec.size() != getWeightsSize())
             {
-                throw std::invalid_argument("Input weights vector size does not match layer weights size.");
+                CLNN_FATAL("Input weights vector size does not match layer weights size.");
             }
 
             cl_int err;
@@ -59,7 +59,7 @@ namespace Layers::Trainable
                 &writeEvent);
             if (err != CL_SUCCESS)
             {
-                throw std::runtime_error("Failed to enqueue write buffer for weights. Error code: " + std::to_string(err));
+                CLNN_FATAL("Failed to enqueue write buffer for weights. Error code: " + std::to_string(err));
             }
             return writeEvent;
         }
@@ -67,7 +67,7 @@ namespace Layers::Trainable
         {
             if (p_biasesVec.size() != getBiasesSize())
             {
-                throw std::invalid_argument("Input biases vector size does not match layer biases size.");
+                CLNN_FATAL("Input biases vector size does not match layer biases size.");
             }
 
             cl_int err;
@@ -82,7 +82,7 @@ namespace Layers::Trainable
                 &writeEvent);
             if (err != CL_SUCCESS)
             {
-                throw std::runtime_error("Failed to enqueue write buffer for biases. Error code: " + std::to_string(err));
+                CLNN_FATAL("Failed to enqueue write buffer for biases. Error code: " + std::to_string(err));
             }
             return writeEvent;
         }

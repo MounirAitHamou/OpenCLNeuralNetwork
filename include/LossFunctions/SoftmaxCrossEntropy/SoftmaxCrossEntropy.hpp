@@ -4,7 +4,7 @@
 
 namespace LossFunctions
 {
-    class SoftmaxCrossEntropy : public LossFunction
+    class SoftmaxCrossEntropy final : public LossFunction
     {
     public:
         SoftmaxCrossEntropy(std::shared_ptr<Utils::SharedResources> p_sharedResources)

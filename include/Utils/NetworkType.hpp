@@ -17,7 +17,7 @@ namespace Utils
         case 0:
             return NetworkType::Local;
         default:
-            throw std::invalid_argument("Invalid value for NetworkType");
+            CLNN_FATAL("Invalid value for NetworkType");
         }
     }
 
@@ -28,7 +28,7 @@ namespace Utils
         case NetworkType::Local:
             return "Local";
         default:
-            throw std::invalid_argument("Invalid NetworkType value");
+            CLNN_FATAL("Invalid NetworkType value");
         }
     }
 }

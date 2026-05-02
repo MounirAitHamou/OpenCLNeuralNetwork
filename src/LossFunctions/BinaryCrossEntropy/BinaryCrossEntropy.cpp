@@ -9,7 +9,7 @@ namespace LossFunctions
                                                       const size_t p_outputElements,
                                                       const size_t p_batchSize)
     {
-        Utils::setKernelArgs(m_gradientKernel, p_predictions, p_targets, p_outputGradients, (cl_uint)p_outputElements);
+        Utils::setKernelArgs(m_gradientKernel, p_predictions, p_targets, p_outputGradients, static_cast<cl_uint>(p_outputElements));
         cl::NDRange global(p_batchSize, p_outputElements);
         cl::Event kernelEvent;
         p_queue.enqueueNDRangeKernel(m_gradientKernel,
@@ -27,7 +27,7 @@ namespace LossFunctions
         m_gradientKernel = cl::Kernel(m_sharedResources->getProgram(), "binaryCrossEntropyComputeGradients", &err);
         if (err != CL_SUCCESS)
         {
-            throw std::runtime_error("Failed to create BinaryCrossEntropy gradient kernel");
+            CLNN_FATAL("Failed to create BinaryCrossEntropy gradient kernel");
         }
     }
 
@@ -36,16 +36,16 @@ namespace LossFunctions
                                           size_t p_outputElements,
                                           size_t p_batchSize)
     {
-        float totalLoss = 0.0f;
+        float totalLoss = 0.0F;
         size_t totalElements = p_outputElements * p_batchSize;
         for (size_t i = 0; i < totalElements; ++i)
         {
-            constexpr float eps = 1e-7f;
-            float p = std::clamp(p_predictions[i], eps, 1.0f - eps);
+            constexpr float eps = 1e-7F;
+            float clampedPred = std::clamp(p_predictions[i], eps, 1.0F - eps);
 
             totalLoss += -(
-                p_targets[i] * std::log(p) +
-                (1.0f - p_targets[i]) * std::log(1.0f - p));
+                (p_targets[i] * std::log(clampedPred)) +
+                ((1.0F - p_targets[i]) * std::log(1.0F - clampedPred)));
         }
         return totalLoss / static_cast<float>(p_batchSize);
     }

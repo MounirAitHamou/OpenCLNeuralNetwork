@@ -23,7 +23,8 @@ namespace Visualization
             Utils::Dimensions p_dimensions,
             std::string p_name)
         {
-            return VisualizationTensor(std::move(p_name), std::move(p_dimensions), Utils::readCLBuffer(p_queue, p_buffer, p_offset, p_dimensions.getTotalElements()));
+            size_t totalElements = p_dimensions.getTotalElements();
+            return VisualizationTensor(std::move(p_name), std::move(p_dimensions), Utils::readCLBuffer(p_queue, p_buffer, p_offset, totalElements));
         }
 
         std::string toString() const

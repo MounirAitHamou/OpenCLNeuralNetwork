@@ -58,7 +58,7 @@ namespace Layers::Activation
         void printLeakyReLULayer(const cl::CommandQueue &p_queue, const size_t p_batchSize) const
         {
             printPreActivationLayer(p_queue, p_batchSize);
-            std::cout << "Alpha: " << m_alpha << std::endl;
+            std::cout << "Alpha: " << m_alpha << "\n";
         }
     };
 }

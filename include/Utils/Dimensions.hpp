@@ -6,6 +6,8 @@
 #include <string>
 #include <sstream>
 
+#include "Utils/Error.hpp"
+
 namespace Utils
 {
 
@@ -23,7 +25,7 @@ namespace Utils
             {
                 if (dim <= 0)
                 {
-                    throw std::invalid_argument("Dimensions cannot be zero or negative.");
+                    CLNN_FATAL("Dimensions cannot be zero or negative.");
                 }
             }
             m_dimensions = p_dimensions;
@@ -35,7 +37,7 @@ namespace Utils
             {
                 if (dim <= 0)
                 {
-                    throw std::invalid_argument("Dimensions cannot be zero or negative.");
+                    CLNN_FATAL("Dimensions cannot be zero or negative.");
                 }
             }
             m_dimensions = p_dimensions;
@@ -87,7 +89,7 @@ namespace Utils
         {
             if (p_outputDimensions.getDimensions().size() != 1)
             {
-                throw std::invalid_argument("Dense layer requires single-dimensional output dimensions.");
+                CLNN_FATAL("Dense layer requires single-dimensional output dimensions.");
             }
             return p_outputDimensions;
         }

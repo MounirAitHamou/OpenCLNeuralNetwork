@@ -4,7 +4,7 @@
 
 namespace LossFunctions
 {
-    class BinaryCrossEntropy : public LossFunction
+    class BinaryCrossEntropy final : public LossFunction
     {
     public:
         BinaryCrossEntropy(std::shared_ptr<Utils::SharedResources> p_sharedResources)
