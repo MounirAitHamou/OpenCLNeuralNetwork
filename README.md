@@ -1,79 +1,114 @@
-# OpenCLNeuralNetwork
+# CLNN
 
-**OpenCLNeuralNetwork** is a modular neural network framework written in modern C++ with OpenCL acceleration.  
-This project was created as a personal learning project to understand neural network implementation, GPU programming, and OpenCL fundamentals from the ground up.
+CLNN is a C++20, OpenCL-accelerated neural-network library built around a dynamic computation graph. Tensor operations record their dependencies, and `backward()` dispatches reverse-mode automatic differentiation kernels to the selected GPU. Modules and optimizers consume that graph instead of owning custom backpropagation pipelines.
 
----
+This is the 2.0 rewrite of the original OpenCLNeuralNetwork project. GPU tensors own OpenCL buffers, while a CPU backend provides a deterministic correctness oracle and a portable fallback for tests.
 
-## 🚀 Features
+## Highlights
 
-- ⚙️ **Fully modular architecture**  
-  Define any number of hidden layers, with full control over:
-  - Layer types
-  - Layer sizes
-  - Loss function type
-  - Optimizer type and configuration
-  - Batch size
+- Dynamic, define-by-run computation graphs with automatic topological traversal
+- Runtime-loaded OpenCL 1.2 backend with cached kernels, pooled GPU buffers, and event profiling
+- Asynchronous, in-order OpenCL kernel submission with explicit device synchronization
+- GPU-resident values, gradient accumulation, optimizer moments, and update kernels
+- Gradient accumulation through branches and NumPy-style broadcasting
+- In-place version checks, graph lifetime checks, and `NoGradGuard`
+- Elementwise arithmetic, tiled matrix multiplication, 2D convolution and pooling, axis reductions, reshape/transpose, softmax, and common nonlinearities
+- Stable MSE, binary cross-entropy, BCE-with-logits, and cross-entropy losses
+- `Linear`, `Conv2d`, pooling, `BatchNorm`, `LayerNorm`, `Dropout`, residual blocks, global average pooling, activations, and owning `Sequential` modules
+- SGD with momentum, Adam, and decoupled AdamW, with parameter groups and learning-rate schedulers
+- Named, shape-checked, dependency-free model state files
+- Full sequential architecture checkpoints and resumable optimizer moment state
+- CSV numerical and CIFAR-10 loaders, deterministic splits, shuffling, mini-batches, and asynchronous prefetch
+- Tensor health/statistics inspection on CPU or GPU
+- Typed Python bindings with NumPy interoperability and native GPU execution
+- Saliency, Input x Gradient, Integrated Gradients, SmoothGrad, and removable module hooks
+- Deterministic unit, gradient, serialization, optimizer, and end-to-end training tests
+- Built-in CPU/OpenCL microbenchmarks for matrix, convolution/pooling, and reduction kernels
+- Installable CMake target: `CLNN::clnn`
 
-- 🧠 **Current Components**
-  - **Layer types:** Dense, Convolutional, Softmax, Sigmoid, ReLU, Tanh, LeakyReLU
-  - **Loss functions:** Mean Squared Error (MSE), Binary Cross Entropy (BCE)
-  - **Optimizers:** Stochastic Gradient Descent (SGD), Adam, AdamW
+## Quick start
 
-- ⚡ **OpenCL-powered**
-  - Matrix operations and training computations are offloaded to the GPU using OpenCL.
-  - Enables accelerated training on compatible devices.
+```cpp
+#include <clnn/clnn.hpp>
 
-- 🧮 **CLBlast integration**
-  - Utilizes CLBlast for optimized matrix multiplications and other linear algebra operations.
+#include <memory>
+#include <random>
 
-- 📦 **Batch training**
-  - Supports training on mini-batches for better generalization and GPU parallelism.
+std::mt19937 rng(42);
+auto gpu = clnn::Device::opencl();
+clnn::nn::Sequential model;
+model.add(std::make_unique<clnn::nn::Linear>(2, 8, rng, true, gpu))
+     .add(std::make_unique<clnn::nn::Tanh>())
+     .add(std::make_unique<clnn::nn::Linear>(8, 1, rng, true, gpu));
 
-- 💾 **Model saving/loading**
-  - Save and load model configurations and weights in HDF5 format for easy persistence.
+clnn::Tensor x({0, 0, 0, 1, 1, 0, 1, 1}, {4, 2}, false, {}, gpu);
+clnn::Tensor y({0, 1, 1, 0}, {4, 1}, false, {}, gpu);
+clnn::optim::Adam optimizer(model.parameters(), 0.03F);
 
-- 📊 **Data processing**
-  - Built-in CSV data loader for loading and preprocessing datasets.
-    > Planned: Image data processor
-  - Supports splitting data into training, validation, and test sets.
+optimizer.zero_grad();
+auto loss = clnn::binary_cross_entropy_with_logits(model(x), y);
+loss.backward();
+optimizer.step();
+```
 
----
+## Build and test
 
-## 📦 Project Status
+CLNN loads the operating system's OpenCL loader dynamically, so compiling does not require OpenCL headers or an SDK. Running GPU code requires a vendor OpenCL driver. Tests use the vendored GoogleTest checkout.
 
-This project is a **work in progress** and is being actively developed as a learning initiative.  
-The goal is to implement core neural network functionality from scratch while gaining a deeper understanding of OpenCL and GPU computation.
+```sh
+cmake --preset debug
+cmake --build --preset debug
+ctest --preset debug
+```
 
----
+Run the XOR example with `out/build/debug/clnn_examples` (or `clnn_examples.exe` on Windows).
+The equivalent Python example, including all four explainability methods, is available at
+`python/examples/clnn_xor.py`.
+Run `clnn_examples --cifar` to train the convolutional CIFAR-10 example from
+`data/CIFAR-10/data_batch_1.bin`; it resumes `cifar10.clnn` and its AdamW state when present.
+Run `out/build/release/clnn_benchmarks` to compare synchronized CPU and OpenCL operation batches
+and print per-kernel event timings. `clnn_benchmarks --check` applies the conservative regression
+limits used by CTest and CI.
 
-## 🛣️ Roadmap
+## Python
 
-Planned features include:
-- 📈 Additional layer types (e.g., Dropout, Batch Normalization)
----
+Build and install the Python package from the repository root:
 
-## 📂 Documentation
+```sh
+python -m pip install .
+```
 
-- 🧰 [Installation Guide](./INSTALL.md)
-- 🧪 [Usage Instructions](./USAGE.md)
-- 📄 [License](./LICENSE)
+The Python tensors use the same C++ autograd graph and OpenCL kernels as the native API:
 
----
+```python
+import numpy as np
+import clnn
+from clnn import nn, optim
 
-## 🧑‍💻 Author
+device = clnn.Device.opencl() if clnn.opencl_available() else clnn.Device.cpu()
+model = nn.Sequential()
+model.add(nn.Linear(2, 8, seed=42, device=device))
+model.add(nn.Tanh())
+model.add(nn.Linear(8, 1, seed=43, device=device))
 
-Built by Mounir Ait Hamou as a self-guided learning project.
+x = clnn.Tensor(np.array([[0, 0], [0, 1], [1, 0], [1, 1]], np.float32), device=device)
+y = clnn.Tensor(np.array([[0], [1], [1], [0]], np.float32), device=device)
+optimizer = optim.Adam(model, learning_rate=0.03)
 
----
+optimizer.zero_grad()
+loss = clnn.binary_cross_entropy_with_logits(model(x), y)
+loss.backward()
+optimizer.step()
+```
 
-## 🤝 Collaboration
+Passing `device=clnn.Device.opencl()` creates GPU-resident tensors; `.numpy()`, `.item()`,
+and `.grad` copy their current values back to NumPy. The package is fully type-marked and
+requires Python 3.9+ and NumPy.
 
-I'm open to collaborations! The best way to get in touch is directly through this repository:  
+See [the architecture](docs/ARCHITECTURE.md), [the usage guide](USAGE.md), and [migration notes](docs/MIGRATION.md).
 
-- Open an [Issue](https://github.com/MounirAitHamou/OpenCLNeuralNetwork/issues)  
-- Start or reply in [Discussions](https://github.com/MounirAitHamou/OpenCLNeuralNetwork/discussions)  
+## Scope
 
-All communication can happen through GitHub—no email needed. I'm happy to review contributions, answer questions, or discuss ideas!
+Tensors are contiguous `float32` values on a CPU or OpenCL GPU. The current surface intentionally excludes higher-order derivatives, arbitrary-stride views, and mixed precision. Unsupported shapes and cross-device operations fail explicitly.
 
----
+Licensed under the [MIT License](LICENSE).

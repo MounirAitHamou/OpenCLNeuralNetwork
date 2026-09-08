@@ -1,6 +1,0 @@
-#ifndef HELPER_FUNCTIONS_CLH
-#define HELPER_FUNCTIONS_CLH
-#define LOG_SAFE_VALUE 1e-9f
-
-
-#endif

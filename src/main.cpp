@@ -1,235 +1,182 @@
-#include "NeuralNetworks/Local/LocalNeuralNetwork.hpp"
+#include "clnn/clnn.hpp"
 
-#ifdef _WIN32
-#define _CRTDBG_MAP_ALLOC
-#include <crtdbg.h>
-#include <cstdlib>
-#ifdef _DEBUG
-#define DBG_NEW new (_NORMAL_BLOCK, __FILE__, __LINE__)
-#define new DBG_NEW
-#endif
-#endif
-
-#include <chrono>
-#include <cstdio>
+#include <algorithm>
+#include <array>
+#include <cstddef>
 #include <cstdint>
-#include <cstdlib>
-#include <vector>
-#include <fstream>
-#include <stdexcept>
+#include <filesystem>
+#include <iomanip>
+#include <iostream>
+#include <iterator>
+#include <memory>
+#include <random>
+#include <string_view>
 
-int XORTest(std::shared_ptr<Utils::SharedResources> p_sharedResources, NeuralNetworks::Local::LocalNeuralNetwork &net)
-{
-    size_t batchSize = 1;
-    DataLoaders::CSVNumericalLoader csvLoader(std::move(p_sharedResources), batchSize, {"bit1", "bit2"}, {"outputbit"});
-    std::string dataDir = DATA_DIR;
-    std::string filePath = dataDir + "/XOR/xor_data.csv";
-    csvLoader.loadData(filePath);
-    unsigned int seed;
-    seed = static_cast<unsigned int>(std::chrono::system_clock::now().time_since_epoch().count());
-    csvLoader.splitData(1.0F, 0.0F, seed);
-    csvLoader.activateTrainPartition();
-    csvLoader.shuffleCurrentPartition(seed);
+int train_and_save_cifar() {
+    using namespace clnn;
 
-    std::cout << "\nTesting:\n";
-    for (const Utils::Batch &batch : csvLoader)
-    {
-        std::vector<float> inputsVec = batch.getInputsVector();
-        std::vector<float> targetsVec = batch.getTargetsVector();
-        std::vector<float> prediction = net.predict(batch.getInputs(), batch.getSize());
-
-        std::cout << "Input: (" << inputsVec[0] << ", " << inputsVec[1] << ")"
-                  << " | Predicted: " << prediction[0]
-                  << " | Target: " << targetsVec[0] << "\n";
+    if (!opencl_available()) {
+        std::cerr << "No OpenCL GPU is available. Install a vendor OpenCL driver.\n";
+        return 1;
     }
-    return 0;
-}
+    const auto device = Device::opencl();
+    std::cout << "Training on " << device.name() << '\n';
 
-int makeXORModel(Utils::OpenCLResources oclResources, const std::string &p_fileName)
-{
-    size_t batchSize = 3;
-    float learningRate = 0.001F;
-    float weightDecayRate = 0.0F;
-    float beta1 = 0.9F;
-    float beta2 = 0.999F;
-    float epsilon = 1e-8F;
-    int epochs = 3000;
-    bool lossReporting = true;
+    constexpr std::size_t batch_size = 64;
+    constexpr std::size_t epochs = 2;
+    const std::filesystem::path data_path = "data/CIFAR-10/data_batch_1.bin";
+    const std::filesystem::path checkpoint_path = "cifar10.clnn";
+    auto optimizer_path = checkpoint_path;
+    optimizer_path += ".optimizer";
 
-    DataLoaders::CSVNumericalLoader csvLoader(oclResources.getSharedResources(), batchSize, {"bit1", "bit2"}, {"outputbit"});
-    std::string dataDir = DATA_DIR;
-    std::string dataFilePath = dataDir + "/XOR/xor_data.csv";
-    csvLoader.loadData(dataFilePath);
-    size_t seed;
-    seed = static_cast<size_t>(std::chrono::system_clock::now().time_since_epoch().count());
-    csvLoader.splitData(1.0F, 0.0F, seed);
-    const Utils::Dimensions initialInputDimensions = Utils::Dimensions({csvLoader.getInputSize()});
-    const size_t flatOutputSize = csvLoader.getTargetSize();
+    std::cout << "Loading CIFAR-10 from " << data_path << '\n';
+    auto dataset = data::load_cifar10_batch(data_path);
+    auto partitions = data::split(dataset, 0.9F, 0.1F, 42);
+    data::DataLoader training(partitions.training, batch_size, device, true, 42);
+    data::DataLoader validation(partitions.validation, batch_size, device);
 
-    NeuralNetworks::Local::LocalNeuralNetwork loadedNet;
-    NeuralNetworks::Local::LocalNeuralNetwork net;
-    if (!std::filesystem::exists(p_fileName))
-    {
-        auto lossFunctionArgs = Utils::makeBinaryCrossEntropyLossFunctionArgs();
+    std::mt19937 generator(42);
+    std::unique_ptr<nn::Sequential> model;
+    if (std::filesystem::exists(checkpoint_path)) {
+        model = nn::load_checkpoint(checkpoint_path, device);
+        std::cout << "Resumed model from " << checkpoint_path << '\n';
+    } else {
+        model = std::make_unique<nn::Sequential>();
+        model
+            ->add(std::make_unique<nn::Conv2d>(3, 32, std::array<std::size_t, 2>{3, 3}, generator,
+                                               std::array<std::size_t, 2>{1, 1},
+                                               nn::PaddingMode::same, true, device))
+            .add(std::make_unique<nn::ReLU>())
+            .add(std::make_unique<nn::Conv2d>(32, 64, std::array<std::size_t, 2>{3, 3}, generator,
+                                              std::array<std::size_t, 2>{2, 2},
+                                              nn::PaddingMode::same, true, device))
+            .add(std::make_unique<nn::ReLU>())
+            .add(std::make_unique<nn::Conv2d>(64, 128, std::array<std::size_t, 2>{3, 3}, generator,
+                                              std::array<std::size_t, 2>{2, 2},
+                                              nn::PaddingMode::same, true, device))
+            .add(std::make_unique<nn::ReLU>())
+            .add(std::make_unique<nn::Flatten>())
+            .add(std::make_unique<nn::Linear>(128 * 8 * 8, 256, generator, true, device))
+            .add(std::make_unique<nn::ReLU>())
+            .add(std::make_unique<nn::Linear>(256, 10, generator, true, device));
+    }
 
-        auto optimizerArgs = Utils::makeAdamWArgs(
-            learningRate,
-            weightDecayRate,
-            beta1,
-            beta2,
-            epsilon);
-        net = NeuralNetworks::Local::LocalNeuralNetwork(std::move(oclResources), Utils::createNetworkArgs(initialInputDimensions, {}, std::move(optimizerArgs), std::move(lossFunctionArgs)), seed, batchSize);
+    optim::AdamW optimizer(model->parameters(), 1.0e-3F, 0.9F, 0.999F, 1.0e-8F, 1.0e-4F);
+    if (std::filesystem::exists(optimizer_path)) {
+        optim::load_state_dict(optimizer, optimizer_path);
+        std::cout << "Resumed optimizer state from " << optimizer_path << '\n';
+    }
 
-        net.addDense(32)
-            .addTanh()
-            .addConvolutional(Utils::FilterDimensions(1, 1, 32, 24),
-                              Utils::StrideDimensions(1, 1),
-                              Utils::PaddingType::Same)
-            .addReLU()
-            .addConvolutional(Utils::FilterDimensions(1, 1, 24, 16),
-                              Utils::StrideDimensions(1, 1),
-                              Utils::PaddingType::Same)
-            .addReLU()
-            .addConvolutional(Utils::FilterDimensions(1, 1, 16, 8),
-                              Utils::StrideDimensions(1, 1),
-                              Utils::PaddingType::Same)
-            .addReLU()
-            .addDense(16)
-            .addTanh()
-            .addDense(flatOutputSize)
-            .addSigmoid();
-
-        net.train(
-            csvLoader,
-            epochs,
-            lossReporting);
-
-        XORTest(net.getSharedResources(), net);
-
-        std::cout << "\nSaving network to file\n";
-        net.save(p_fileName);
-
-        loadedNet = NeuralNetworks::Local::LocalNeuralNetwork::load(net.getSharedResources(), p_fileName, batchSize);
-
-        if (net.equals(loadedNet))
-        {
-            std::cout << "Loaded network is equivalent to initial network\n";
+    for (std::size_t epoch = 0; epoch < epochs; ++epoch) {
+        training.reset(static_cast<std::uint32_t>(42 + epoch));
+        double accumulated_loss = 0.0;
+        std::size_t trained_samples = 0;
+        while (auto batch = training.next()) {
+            optimizer.zero_grad();
+            auto loss = cross_entropy((*model)(batch->inputs), batch->class_labels);
+            accumulated_loss += static_cast<double>(loss.item()) * batch->size;
+            trained_samples += batch->size;
+            loss.backward();
+            optimizer.step();
         }
-        else
+
+        validation.reset();
+        std::size_t correct = 0;
+        std::size_t validated_samples = 0;
         {
-            std::cerr << "Loaded network not equivalent to initial network\n";
-            return -1;
+            NoGradGuard no_grad;
+            while (auto batch = validation.next()) {
+                const auto logits = (*model)(batch->inputs).data();
+                for (std::size_t row = 0; row < batch->size; ++row) {
+                    const auto first = logits.begin() + static_cast<std::ptrdiff_t>(row * 10);
+                    const auto prediction = static_cast<std::size_t>(
+                        std::distance(first, std::max_element(first, first + 10)));
+                    if (prediction == batch->class_labels[row])
+                        ++correct;
+                }
+                validated_samples += batch->size;
+            }
+        }
+
+        const auto mean_loss = accumulated_loss / static_cast<double>(trained_samples);
+        const auto accuracy = validated_samples == 0 ? 0.0
+                                                     : static_cast<double>(correct) /
+                                                           static_cast<double>(validated_samples);
+        std::cout << "epoch " << (epoch + 1) << '/' << epochs << "  loss " << mean_loss
+                  << "  validation accuracy " << std::fixed << std::setprecision(2)
+                  << accuracy * 100.0 << "%\n";
+
+        nn::save_checkpoint(*model, checkpoint_path);
+        optim::save_state_dict(optimizer, optimizer_path);
+    }
+
+    validation.reset();
+    if (auto batch = validation.next()) {
+        std::size_t predicted_class = 0;
+        {
+            NoGradGuard no_grad;
+            const auto logits = (*model)(batch->inputs).data();
+            predicted_class = static_cast<std::size_t>(
+                std::distance(logits.begin(),
+                              std::max_element(logits.begin(), logits.begin() + 10)));
+        }
+        const auto baseline = Tensor::zeros(batch->inputs.shape(), false, {}, device);
+        const auto attribution = explain::integrated_gradients(
+            *model, batch->inputs, {predicted_class, 0}, baseline, 32);
+        std::cout << "Explained validation class " << predicted_class << " with attribution shape "
+                  << shape_string(attribution.shape()) << " on " << attribution.device().name()
+                  << '\n';
+    }
+
+    std::cout << "Saved CIFAR-10 checkpoint to " << checkpoint_path << '\n';
+    return 0;
+}
+
+int train_and_save_xor() {
+    using namespace clnn;
+
+    if (!opencl_available()) {
+        std::cerr << "No OpenCL GPU is available. Install a vendor OpenCL driver.\n";
+        return 1;
+    }
+    const auto device = Device::opencl();
+    std::cout << "Training on " << device.name() << '\n';
+
+    std::mt19937 generator(42);
+    nn::Sequential model;
+    model.add(std::make_unique<nn::Linear>(2, 8, generator, true, device))
+        .add(std::make_unique<nn::Tanh>())
+        .add(std::make_unique<nn::Linear>(8, 1, generator, true, device));
+
+    const Tensor inputs({0, 0, 0, 1, 1, 0, 1, 1}, {4, 2}, false, {}, device);
+    const Tensor targets({0, 1, 1, 0}, {4, 1}, false, {}, device);
+    optim::Adam optimizer(model.parameters(), 0.03F);
+
+    for (int epoch = 0; epoch < 1'000; ++epoch) {
+        optimizer.zero_grad();
+        auto loss = binary_cross_entropy_with_logits(model(inputs), targets);
+        loss.backward();
+        optimizer.step();
+        if (epoch % 200 == 0) {
+            std::cout << "epoch " << std::setw(4) << epoch << "  loss " << loss.item() << '\n';
         }
     }
-    else
-    {
-        loadedNet = NeuralNetworks::Local::LocalNeuralNetwork::load(oclResources.getSharedResources(), p_fileName, batchSize);
-        std::cout << "Loaded network from file\n";
-    }
 
+    NoGradGuard no_grad;
+    const auto predictions = sigmoid(model(inputs));
+    std::cout << "\nXOR probabilities:\n";
+    for (std::size_t row = 0; row < 4; ++row) {
+        std::cout << static_cast<int>(inputs.data()[row * 2]) << " xor "
+                  << static_cast<int>(inputs.data()[row * 2 + 1]) << " = " << std::fixed
+                  << std::setprecision(4) << predictions.data()[row] << '\n';
+    }
+    clnn::nn::save_state_dict(model, "xor.clnn");
     return 0;
 }
 
-int makeCIFARModel(Utils::OpenCLResources oclResources, const std::string &p_fileName)
-{
-    size_t batchSize = 10;
-    float learningRate = 1e-3F;
-    float weightDecayRate = 0.0F;
-    float beta1 = 0.9F;
-    float beta2 = 0.999F;
-    float epsilon = 1e-8F;
-    int epochs = 2;
-    bool lossReporting = true;
-
-    DataLoaders::BinImageDataLoader cifarLoader(
-        oclResources.getSharedResources(),
-        batchSize,
-        32,
-        32,
-        3,
-        true,
-        DataLoaders::BinImageDataLoader::DataOrder::CHW,
-        DataLoaders::BinImageDataLoader::DataOrder::CHW,
-        10);
-
-    cifarLoader.loadData("data/CIFAR-10/data_batch_1.bin");
-
-    size_t seed =
-        static_cast<size_t>(std::chrono::system_clock::now().time_since_epoch().count());
-
-    cifarLoader.splitData(0.8F, 0.1F, seed);
-    cifarLoader.activateTrainPartition();
-    cifarLoader.shuffleCurrentPartition(seed);
-
-    const Utils::Dimensions inputDims({3, 32, 32});
-    const size_t outputSize = 10;
-
-    NeuralNetworks::Local::LocalNeuralNetwork net;
-
-    if (!std::filesystem::exists(p_fileName))
-    {
-        auto lossFunctionArgs = Utils::makeSoftmaxCrossEntropyLossFunctionArgs();
-
-        auto optimizerArgs = Utils::makeAdamWArgs(
-            learningRate,
-            weightDecayRate,
-            beta1,
-            beta2,
-            epsilon);
-        net = NeuralNetworks::Local::LocalNeuralNetwork(
-            std::move(oclResources),
-            Utils::createNetworkArgs(
-                inputDims,
-                {},
-                std::move(optimizerArgs),
-                std::move(lossFunctionArgs)),
-            seed,
-            batchSize);
-
-        net.addConvolutional(
-               Utils::FilterDimensions(3, 3, 3, 32),
-               Utils::StrideDimensions(1, 1),
-               Utils::PaddingType::Same)
-            .addReLU()
-            .addConvolutional(
-                Utils::FilterDimensions(3, 3, 32, 64),
-                Utils::StrideDimensions(2, 2),
-                Utils::PaddingType::Same)
-            .addReLU()
-            .addConvolutional(
-                Utils::FilterDimensions(3, 3, 64, 128),
-                Utils::StrideDimensions(2, 2),
-                Utils::PaddingType::Same)
-            .addReLU()
-            .addDense(256)
-            .addReLU()
-            .addDense(outputSize);
-        net.train(cifarLoader, epochs, lossReporting);
-        net.save(p_fileName);
+int main(const int argc, char** argv) {
+    if (argc > 1 && std::string_view(argv[1]) == "--cifar") {
+        return train_and_save_cifar();
     }
-    else
-    {
-        net = NeuralNetworks::Local::LocalNeuralNetwork::load(
-            oclResources.getSharedResources(),
-            p_fileName,
-            batchSize);
-        std::cout << "Loaded network from file\n";
-    }
-
-    return 0;
-}
-
-int main()
-{
-#ifdef _WIN32
-#ifdef _DEBUG
-    _CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
-    //_CrtSetBreakAlloc(19441298); // Memleak debug
-#endif
-#endif
-
-    Utils::OpenCLResources oclResources = Utils::OpenCLResources::createOpenCLResources();
-    makeXORModel(std::move(oclResources), "xor_network.h5");
-    // makeCIFARModel(std::move(oclResources), "cifar_network.h5");
-    return 0;
+    return train_and_save_xor();
 }

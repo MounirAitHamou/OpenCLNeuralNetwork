@@ -1,0 +1,35 @@
+[build-system]
+requires = ["scikit-build-core>=0.11", "pybind11==3.1.0"]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "clnn-autograd"
+version = "2.0.0"
+description = "OpenCL-accelerated dynamic autograd for Python and C++"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { file = "LICENSE" }
+authors = [{ name = "CLNN contributors" }]
+dependencies = ["numpy>=1.26"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "Programming Language :: C++",
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+[project.urls]
+Repository = "https://github.com/MounirAitHamou/PrivateOpenCLNeuralNetwork"
+
+[tool.scikit-build]
+cmake.args = [
+    "-DCLNN_BUILD_PYTHON=ON",
+    "-DCLNN_FETCH_PYBIND11=OFF",
+    "-DCLNN_BUILD_EXAMPLES=OFF",
+    "-DCLNN_BUILD_TESTS=OFF",
+]
+wheel.packages = ["python/clnn"]
+sdist.include = ["include/**", "src/**", "python/**", "cmake/**", "CMakeLists.txt", "LICENSE"]
+sdist.exclude = ["python/**/__pycache__/**", "python/**/*.pyc"]

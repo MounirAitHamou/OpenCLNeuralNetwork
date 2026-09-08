@@ -10,3 +10,8 @@
 .vscode/settings.json
 *.pdb
 /build-release
+__pycache__/
+*.py[cod]
+/.venv
+/dist
+/*.egg-info

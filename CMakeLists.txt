@@ -1,143 +1,154 @@
-cmake_minimum_required(VERSION 3.10)
-project(OpenCLNeuralNetwork LANGUAGES CXX)
+cmake_minimum_required(VERSION 3.20)
 
-set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+project(CLNN VERSION 1.0.0 LANGUAGES CXX)
 
-set(CMAKE_CXX_STANDARD 20)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
+include(CTest)
+include(GNUInstallDirs)
 
-enable_testing()
-cmake_policy(SET CMP0074 NEW)
+option(CLNN_BUILD_EXAMPLES "Build CLNN examples" ON)
+option(CLNN_BUILD_BENCHMARKS "Build CLNN microbenchmarks" ON)
+option(CLNN_BUILD_TESTS "Build CLNN tests" ${BUILD_TESTING})
+option(CLNN_BUILD_PYTHON "Build the Python extension module" OFF)
+option(CLNN_FETCH_PYBIND11 "Download pybind11 when it is not installed" ON)
+option(CLNN_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" OFF)
 
-if(DEFINED CMAKE_TOOLCHAIN_FILE)
-    set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)
-endif()
+add_library(clnn
+    src/autograd/tensor.cpp
+    src/autograd/ops.cpp
+    src/device.cpp
+    src/explain.cpp
+    src/data/dataset.cpp
+    src/inspect.cpp
+    src/nn/module.cpp
+    src/opencl/backend.cpp
+    src/opencl/opencl_api.cpp
+    src/optim/optimizer.cpp
+)
+add_library(CLNN::clnn ALIAS clnn)
+set_target_properties(clnn PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
+target_compile_features(clnn PUBLIC cxx_std_20)
+target_include_directories(clnn
+    PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+        $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
+)
+target_include_directories(clnn PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_link_libraries(clnn PRIVATE ${CMAKE_DL_LIBS})
 
 if(MSVC)
-    foreach(flag_var
-        CMAKE_C_FLAGS
-        CMAKE_C_FLAGS_DEBUG
-        CMAKE_C_FLAGS_RELEASE
-        CMAKE_CXX_FLAGS
-        CMAKE_CXX_FLAGS_DEBUG
-        CMAKE_CXX_FLAGS_RELEASE)
-        string(REPLACE "/W3" "" ${flag_var} "${${flag_var}}")
+    target_compile_options(clnn PRIVATE /W4 /permissive-)
+    if(CLNN_WARNINGS_AS_ERRORS)
+        target_compile_options(clnn PRIVATE /WX)
+    endif()
+else()
+    target_compile_options(clnn PRIVATE -Wall -Wextra -Wpedantic -Wconversion -Wshadow)
+    if(CLNN_WARNINGS_AS_ERRORS)
+        target_compile_options(clnn PRIVATE -Werror)
+    endif()
+endif()
+
+if(CLNN_BUILD_EXAMPLES)
+    add_executable(clnn_examples src/main.cpp)
+    target_link_libraries(clnn_examples PRIVATE CLNN::clnn)
+endif()
+
+if(CLNN_BUILD_BENCHMARKS)
+    add_executable(clnn_benchmarks benchmarks/benchmark.cpp)
+    target_link_libraries(clnn_benchmarks PRIVATE CLNN::clnn)
+endif()
+
+if(CLNN_BUILD_TESTS)
+    add_subdirectory(tests)
+    if(CLNN_BUILD_BENCHMARKS)
+        add_test(NAME clnn_benchmark_regression COMMAND clnn_benchmarks --check)
+        set_tests_properties(clnn_benchmark_regression PROPERTIES
+            LABELS benchmark
+            TIMEOUT 60
+        )
+    endif()
+endif()
+
+if(CLNN_BUILD_PYTHON)
+    find_package(Python 3.9 REQUIRED COMPONENTS Interpreter Development.Module)
+    find_package(pybind11 3.0 CONFIG QUIET)
+    if(NOT pybind11_FOUND)
+        if(NOT CLNN_FETCH_PYBIND11)
+            message(FATAL_ERROR "pybind11 3.x was not found; install it or enable CLNN_FETCH_PYBIND11")
+        endif()
+        include(FetchContent)
+        FetchContent_Declare(pybind11
+            GIT_REPOSITORY https://github.com/pybind/pybind11.git
+            GIT_TAG v3.1.0
+            GIT_SHALLOW TRUE
+        )
+        FetchContent_MakeAvailable(pybind11)
+    endif()
+
+    pybind11_add_module(_clnn MODULE python/bindings.cpp)
+    target_link_libraries(_clnn PRIVATE CLNN::clnn)
+    target_compile_features(_clnn PRIVATE cxx_std_20)
+
+    set(CLNN_PYTHON_OUTPUT_DIR "${CMAKE_BINARY_DIR}/python/clnn")
+    set_target_properties(_clnn PROPERTIES
+        LIBRARY_OUTPUT_DIRECTORY "${CLNN_PYTHON_OUTPUT_DIR}"
+        RUNTIME_OUTPUT_DIRECTORY "${CLNN_PYTHON_OUTPUT_DIR}"
+    )
+    foreach(config Debug Release RelWithDebInfo MinSizeRel)
+        string(TOUPPER "${config}" config_upper)
+        set_target_properties(_clnn PROPERTIES
+            LIBRARY_OUTPUT_DIRECTORY_${config_upper} "${CLNN_PYTHON_OUTPUT_DIR}"
+            RUNTIME_OUTPUT_DIRECTORY_${config_upper} "${CLNN_PYTHON_OUTPUT_DIR}"
+        )
     endforeach()
+    add_custom_command(TARGET _clnn POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory "${CLNN_PYTHON_OUTPUT_DIR}"
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+                "${CMAKE_CURRENT_SOURCE_DIR}/python/clnn"
+                "${CLNN_PYTHON_OUTPUT_DIR}"
+        COMMAND ${CMAKE_COMMAND} -E touch "${CLNN_PYTHON_OUTPUT_DIR}/py.typed"
+    )
+
+    install(TARGETS _clnn LIBRARY DESTINATION clnn RUNTIME DESTINATION clnn)
+    install(FILES python/clnn/__init__.py python/clnn/__init__.pyi
+                  python/clnn/nn.pyi python/clnn/optim.pyi python/clnn/data.pyi
+                  python/clnn/explain.pyi
+                  python/clnn/py.typed
+            DESTINATION clnn)
+
+    if(CLNN_BUILD_TESTS)
+        add_test(NAME clnn_python_tests
+            COMMAND ${Python_EXECUTABLE} -m unittest discover
+                    -s "${CMAKE_CURRENT_SOURCE_DIR}/python/tests" -v
+        )
+        set_tests_properties(clnn_python_tests PROPERTIES
+            ENVIRONMENT "PYTHONPATH=${CMAKE_BINARY_DIR}/python"
+        )
+    endif()
 endif()
 
-find_package(OpenCL REQUIRED)
-find_package(CLBlast CONFIG REQUIRED)
-find_package(HDF5 CONFIG REQUIRED COMPONENTS C CXX)
-
-add_library(OpenCLNeuralNetworkLib STATIC
-    src/DataLoaders/CSVNumerical/CSVNumericalLoader.cpp
-    src/DataLoaders/BinImage/BinImageDataLoader.cpp
-    src/DataLoaders/DataLoader.cpp
-    src/Layers/ActivationLayers/PreActivationLayers/LeakyReLU/LeakyReLULayer.cpp
-    src/Layers/ActivationLayers/PreActivationLayers/ReLU/ReLULayer.cpp
-    src/Layers/ActivationLayers/Sigmoid/SigmoidLayer.cpp
-    src/Layers/ActivationLayers/Tanh/TanhLayer.cpp
-    src/Layers/ActivationLayers/Softmax/SoftmaxLayer.cpp
-    src/Layers/TrainableLayers/Convolutional/ConvolutionalLayer.cpp
-    src/Layers/TrainableLayers/Dense/DenseLayer.cpp
-    src/NeuralNetworks/Local/LocalNeuralNetwork.cpp
-    src/Optimizers/AdamBaseOptimizers/Adam/AdamOptimizer.cpp
-    src/Optimizers/AdamBaseOptimizers/AdamW/AdamWOptimizer.cpp
-    src/Optimizers/SGD/SGDOptimizer.cpp
-    src/LossFunctions/BinaryCrossEntropy/BinaryCrossEntropy.cpp
-    src/LossFunctions/MeanSquaredError/MeanSquaredError.cpp
-    src/LossFunctions/CategoricalCrossEntropy/CategoricalCrossEntropy.cpp
-    src/LossFunctions/SoftmaxCrossEntropy/SoftmaxCrossEntropy.cpp
-    src/Utils/EventProfiler.cpp
-    src/Utils/LayerArgs.cpp
-    src/Utils/NetworkArgs.cpp
-    src/Utils/OpenCLResources.cpp
-    src/Utils/OptimizerArgs.cpp
-    src/Utils/LossFunctionArgs.cpp
+install(TARGETS clnn EXPORT CLNNTargets
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
+install(DIRECTORY include/clnn DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+install(EXPORT CLNNTargets FILE CLNNTargets.cmake NAMESPACE CLNN::
+        DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/CLNN)
 
-target_include_directories(OpenCLNeuralNetworkLib PUBLIC
-    ${PROJECT_SOURCE_DIR}/include
-    ${HDF5_INCLUDE_DIRS}
+include(CMakePackageConfigHelpers)
+write_basic_package_version_file(
+    "${CMAKE_CURRENT_BINARY_DIR}/CLNNConfigVersion.cmake"
+    VERSION ${PROJECT_VERSION}
+    COMPATIBILITY SameMajorVersion
 )
-
-target_compile_definitions(OpenCLNeuralNetworkLib PUBLIC
-    CL_TARGET_OPENCL_VERSION=120
-    CL_HPP_TARGET_OPENCL_VERSION=120
-    CL_HPP_MINIMUM_OPENCL_VERSION=120
-    KERNELS_DIR="${PROJECT_SOURCE_DIR}/kernels"
+configure_package_config_file(
+    cmake/CLNNConfig.cmake.in
+    "${CMAKE_CURRENT_BINARY_DIR}/CLNNConfig.cmake"
+    INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/CLNN
 )
-
-set(HDF5_LINK_LIBRARIES "")
-
-if(TARGET hdf5::hdf5_cpp-shared)
-    list(APPEND HDF5_LINK_LIBRARIES hdf5::hdf5-shared hdf5::hdf5_cpp-shared)
-elseif(TARGET hdf5::hdf5_cpp-static)
-    list(APPEND HDF5_LINK_LIBRARIES hdf5::hdf5-static hdf5::hdf5_cpp-static)
-elseif(TARGET hdf5::hdf5_cpp)
-    list(APPEND HDF5_LINK_LIBRARIES hdf5::hdf5 hdf5::hdf5_cpp)
-else()
-    list(APPEND HDF5_LINK_LIBRARIES ${HDF5_LIBRARIES})
-endif()
-
-target_link_libraries(OpenCLNeuralNetworkLib PUBLIC
-    OpenCL::OpenCL
-    clblast
-    ${HDF5_LINK_LIBRARIES}
+install(FILES
+    "${CMAKE_CURRENT_BINARY_DIR}/CLNNConfig.cmake"
+    "${CMAKE_CURRENT_BINARY_DIR}/CLNNConfigVersion.cmake"
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/CLNN
 )
-
-add_executable(OpenCLNeuralNetwork src/main.cpp)
-
-target_compile_definitions(OpenCLNeuralNetwork PRIVATE
-    DATA_DIR="${CMAKE_SOURCE_DIR}/data"
-)
-
-target_link_libraries(OpenCLNeuralNetwork PRIVATE
-    OpenCLNeuralNetworkLib
-)
-
-set_target_properties(OpenCLNeuralNetworkLib PROPERTIES
-    CXX_CLANG_TIDY
-    "clang-tidy;-checks=modernize-*,readability-*,performance-*,-modernize-use-trailing-return-type,-readability-magic-numbers,-readability-function-cognitive-complexity,-readability-identifier-length;-header-filter=^(include/|src/)"
-)
-
-if (MSVC)
-    target_compile_options(OpenCLNeuralNetworkLib PRIVATE
-        /W4
-        /permissive-
-        /EHsc
-        $<$<CONFIG:Debug>:/RTC1>
-        $<$<CONFIG:Debug>:/Zi>
-    )
-
-    target_compile_options(OpenCLNeuralNetwork PRIVATE
-        /W4
-        /permissive-
-        /EHsc
-        $<$<CONFIG:Debug>:/RTC1>
-        $<$<CONFIG:Debug>:/Zi>
-    )
-else()
-    target_compile_options(OpenCLNeuralNetworkLib PRIVATE
-        -Wall
-        -Wextra
-        -Wpedantic
-        $<$<CONFIG:Debug>:-g>
-    )
-
-    target_compile_options(OpenCLNeuralNetwork PRIVATE
-        -Wall
-        -Wextra
-        -Wpedantic
-        $<$<CONFIG:Debug>:-g>
-    )
-endif()
-
-if(WIN32 AND MSVC)
-    set(VCPKG_BIN_DIR "${CMAKE_SOURCE_DIR}/vcpkg/installed/x64-windows/bin")
-    set_target_properties(OpenCLNeuralNetwork PROPERTIES
-        VS_DEBUGGER_ENVIRONMENT "PATH=%VCPKG_BIN_DIR%;$ENV{PATH}"
-    )
-endif()
-
-add_subdirectory(tests)

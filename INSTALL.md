@@ -1,92 +1,56 @@
-# 🔧 Installation Guide – OpenCLNeuralNetwork
+# Installation
 
-This guide explains how to build and run **OpenCLNeuralNetwork** on **Windows** and **Linux** using **CMake**, **vcpkg**, and a system OpenCL runtime.
+Requirements:
 
----
+- A C++20 compiler (MSVC 2022, recent GCC, or recent Clang)
+- CMake 3.20 or newer
+- Ninja when using the supplied presets
+- A vendor OpenCL runtime/graphics driver for GPU execution
 
-## 1. Prerequisites
+Configure, build, and test:
 
-### 🪟 Windows
-
-#### ✅ C++ Compiler (MSVC)
-- Install **Visual Studio 2022** (or Build Tools):  
-  https://visualstudio.microsoft.com/visual-cpp-build-tools/
-- During installation, select:
-  - **Desktop development with C++**
-  - **x64** toolchain
-
-#### ✅ LLVM/Clang (For clang-tidy)
-- Download and install LLVM/Clang:  
-  https://releases.llvm.org/download.html
-- During installation, ensure you add LLVM to your system PATH.
-
-#### ✅ CMake
-- Download and install CMake:  
-  https://cmake.org/download/
-
-#### ✅ OpenCL Runtime (Required)
-> ⚠️ **Important:** vcpkg provides OpenCL headers and loaders, but **not** a working OpenCL device.
-
-You must install an OpenCL runtime from your hardware vendor:
-- **NVIDIA GPU** → NVIDIA Graphics Driver  
-- **AMD GPU** → AMD Adrenalin Driver  
-- **Intel GPU / CPU** → Intel OpenCL Runtime  
-
-You can verify your installation later using tools like `clinfo`.
-
----
-
-### 🐧 Linux (Ubuntu / Debian)
-
-Install build tools, CMake, and OpenCL dependencies:
-```bash
-sudo apt update
-sudo apt install -y build-essential cmake ninja-build git \
-                    ocl-icd-opencl-dev clinfo pocl-opencl-icd \
-                    clang-tidy
+```sh
+cmake --preset release
+cmake --build --preset release
+ctest --preset release
 ```
 
----
+Or use `./build.sh debug` / `build.bat debug`. No OpenCL SDK, OpenCL headers, HDF5, CLBlast, or package manager is required. CLNN dynamically loads `OpenCL.dll`, `libOpenCL.so`, or the macOS OpenCL framework at runtime.
 
-## 2. Build the Project
-- Navigate to the root of the OpenCLNeuralNetwork repository.
-- Run the platform-specific build script:
-```bash
-build.bat # Windows
-./build.sh # Linux
+The test suite skips OpenCL-only cases when no GPU runtime is installed. The `clnn_examples` example requires a GPU and prints the selected device.
+
+To install the library:
+
+```sh
+cmake --install out/build/release --prefix /your/prefix
+```
+(Example prefixes: `/usr/local` on Linux, `C:/Libraries/CLNN` on Windows, or `~/clnn` for a user-local install.)
+
+Downstream CMake projects can then use `find_package(CLNN CONFIG REQUIRED)` and link `CLNN::clnn`.
+
+## Python package
+
+Install the Python package with pip from PyPI:
+
+```sh
+python -m pip install .
 ```
 
-What the build script does:
-- Clones and sets up **vcpkg** if not already present.
-- Installs required dependencies:
-  - OpenCL headers and loader (via vcpkg)
-  - HDF5 (for data storage)
-  - CLBlast (for optimized OpenCL BLAS operations)
-- Configures and builds the project using CMake and Ninja.
-- Runs unit tests to verify the build.
+Python 3.9 or newer and NumPy are required. Build an installable wheel with:
 
----
-
-## 3. Run the Program
-- After a successful build, execute the program:
-```bash
-run.bat # Windows
-./run.sh # Linux
+```sh
+python -m pip install build
+python -m build --wheel
+python -m pip install dist/clnn_autograd-*.whl
 ```
 
-- The program will run the main function defined in `src/main.cpp`, which includes a simple neural network training example.
+For an in-tree CMake build, enable `CLNN_BUILD_PYTHON`:
 
----
+```sh
+cmake -S . -B out/build/python -DCLNN_BUILD_PYTHON=ON -DCLNN_BUILD_TESTS=ON
+cmake --build out/build/python --config Release
+ctest --test-dir out/build/python -C Release --output-on-failure
+```
 
-## 4.Troubleshooting
-- No OpenCL platforms found
-  - Ensure you have installed the correct OpenCL runtime for your hardware.
-  - Verify installation with `clinfo` to see available platforms and devices.
-- Build succeeds but runtime crashes
-  - Verify that your graphics drivers are up to date.
-  - Ensure the OpenCL runtime matches your hardware (e.g., NVIDIA drivers for NVIDIA GPUs).
-
----
-
-## ✅ Done
-You're now ready to experiment with the OpenCL-accelerated neural network!
+CMake finds an installed pybind11 3.x package first and otherwise downloads pybind11 3.1.0
+when `CLNN_FETCH_PYBIND11=ON` (the default).
